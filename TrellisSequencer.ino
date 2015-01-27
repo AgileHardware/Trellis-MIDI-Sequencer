@@ -1,18 +1,10 @@
 /***************************************************
-  This is an implementation of Conway's Game of Life.
-
-  Designed specifically to work with the Adafruit Trellis
-  ----> https://www.adafruit.com/products/1616
-  ----> https://www.adafruit.com/products/1611
-
-  These displays use I2C to communicate, 2 pins are required to
-  interface
-  Adafruit invests time and resources providing this open source code,
-  please support Adafruit and open-source hardware by purchasing
-  products from Adafruit!
-
+  Original Trellis Game of Life Code:
   Written by Tony Sherwood for Adafruit Industries.
   MIT license, all text above must be included in any redistribution
+
+  Changes to include Midi Sequencer:
+  Written by Karl Sander
  ****************************************************/
 
 #include <Wire.h>
@@ -25,37 +17,26 @@ Adafruit_Trellis matrix3 = Adafruit_Trellis();
 
 Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2, &matrix3);
 
-#define NUMTRELLIS 4
+#define NUM_TRELLIS     4
+#define NUM_COLUMNS     8
+#define NUM_KEYS        (NUM_TRELLIS * 16)
 
-#define numKeys (NUMTRELLIS * 16)
-
-#define POTI_MODE 0
-#define POTI_DELAY 1
-#define POTI_INTENSITY 2
+#define POTI_MODE       0
+#define POTI_DELAY      1
+#define POTI_INTENSITY  2
 
 #define MODE_SETUP_GAME 0
-#define MODE_RUN_GAME 1
-#define MODE_DRUM_SEQ 2
+#define MODE_RUN_GAME   1
+#define MODE_DRUM_SEQ   2
 
 /*
-  In order for this layout to work, you will have to have soldered your 4 boards
-  together in the same order that I did.  Below is the top view of the circuit, with
-  each board's address, and lines indicating which boards are connected to each other.
-  If you soldered your boards together differently, you will need to edit the chessboard
-  array below until the LED wipe when you start up your sketch turns on all of the LEDs
-  in order.
-
-             [0x73]--[0x72]
-                       |
-  [ARDUINO]--[0x70]--[0x71]
-
-actual setup
-
+This is the arrangment of Trellis matrices that this program is configured for.
+If your setup is different, you'll have to change the numbers in the chessboard array accordingly.
+Hint: you can figure out your arrangment by adding a serial print function to the checkButtons function and pressing the buttons.
 
 [ARDUINO]--[0x70]--[0x71]
                      |
            [0x72]--[0x73]
-
 
 */
 
@@ -72,18 +53,23 @@ int chessboard[8][8] = {
 
 bool nextFrame[64];
 
-long nextMillis = 0;
+// This variable holds the time in milliseconds since boot when the next step should be run
+long nextStepMillis = 0;
 
-
-// Connect Trellis Vin to 5V and Ground to ground.
-// Connect the INT wire to pin #5 (can change later
+// Connect the INT wire from Trellis to pin #5 or change this constant
 #define INTPIN 5
-// Connect I2C SDA pin to your Arduino SDA line
-// Connect I2C SCL pin to your Arduino SCL line
-// All Trellises share the SDA, SCL and INT pin!
-// Even 8 tiles use only 3 wires max
 
-void runTrellisTest() {
+// This function turns all LEDs on the board off
+void clearBoard() {
+  for (uint8_t i=0; i<NUM_KEYS; i++) {
+    trellis.clrLED(i);
+  }
+  trellis.writeDisplay();
+}
+
+// Turn all LEDs on one by one, row by row.
+// If this looks strange, adjust the chessboard matrix.
+void runBootCheck() {
   for (uint8_t i=0; i<8; i++) {
     for (uint8_t j=0; j<8; j++) {
       trellis.setLED(chessboard[i][j]);
@@ -91,10 +77,8 @@ void runTrellisTest() {
       delay(10);
     }
   }
-  for (uint8_t i=0; i<numKeys; i++) {
-    trellis.clrLED(i);
-  }
-  trellis.writeDisplay();
+
+  clearBoard();
 }
 
 void setup() {
@@ -108,10 +92,7 @@ void setup() {
 
   trellis.begin(0x72, 0x71, 0x70, 0x73);
 
-  runTrellisTest();
-
-  delay(200);
-
+  runBootCheck();
 }
 
 void toggle(int placeVal) {
@@ -198,7 +179,7 @@ void liveOrDie(int placeVal) {
 
   if (neighbors == 3 && !trellis.isLED(placeVal)) {
     nextFrame[placeVal] = 1;
-  }else if ((neighbors == 2 || neighbors == 3) && trellis.isLED(placeVal)) {
+  } else if ((neighbors == 2 || neighbors == 3) && trellis.isLED(placeVal)) {
     nextFrame[placeVal] = 1;
   } else {
     nextFrame[placeVal] = 0;
@@ -210,7 +191,7 @@ int getMode() {
   if(state > 768) {
     return 3;
   } else if(state > 512) {
-    return 2;
+    return MODE_DRUM_SEQ;
   } else if(state > 256) {
     return MODE_RUN_GAME;
   } else {
@@ -228,8 +209,8 @@ int getIntensity() {
 void checkSwitches() {
   if (trellis.readSwitches()) {
     // go through every button
-    for (uint8_t i=0; i<numKeys; i++) {
-      // if it was pressed, add it to the list!
+    for (uint8_t i=0; i<NUM_KEYS; i++) {
+      // if it was pressed, toggle the LED in that position
       if (trellis.justPressed(i)) {
         nextFrame[i] = !nextFrame[i];
       }
@@ -237,36 +218,41 @@ void checkSwitches() {
   }
 }
 
+// runs the Game of Life
 void runGame() {
-  if(nextMillis < millis()) {
-    nextMillis = millis() + getDelay();
+  if(nextStepMillis < millis()) {
+    nextStepMillis = millis() + getDelay();
     // Clear out the next frame
     for(int c=0; c<64; c++) {
       nextFrame[c] = 0;
     }
     //compute the next step
-    for (uint8_t i=0; i<numKeys; i++) {
+    for (uint8_t i=0; i<NUM_KEYS; i++) {
       liveOrDie(i);
     }
   }
 }
 
+// This runs when the user can set up the layout for Game of Life
 void setupGame() {
   checkSwitches();
 }
 
-void updateMap() {
-
-  // Update the map
-  for (uint8_t i=0; i<numKeys; i++) {
+// writes the next frame to the LED Matrix
+void writeFrame() {
+  for (uint8_t i=0; i<NUM_KEYS; i++) {
     if(nextFrame[i] == 1) {
       trellis.setLED(i);
     } else {
       trellis.clrLED(i);
     }
   }
+  trellis.writeDisplay();
 }
 
+// The Note input for MIDI functions covers one octave from 0 = C to 6 = B
+
+// Send a MIDI signal to start the specified note
 void startNote(int note) {
   Serial.write(0x90);
   switch (note) {
@@ -278,9 +264,10 @@ void startNote(int note) {
     case 5: Serial.write(57); break;
     case 6: Serial.write(59); break;
   }
-  Serial.write(map(getIntensity(), 0, 1024, 0, 127));
+  Serial.write(127);
 }
 
+// send a midi signal to end the specified note
 void stopNote(int note) {
   Serial.write(0x80);
   switch (note) {
@@ -292,9 +279,10 @@ void stopNote(int note) {
     case 5: Serial.write(57); break;
     case 6: Serial.write(59); break;
   }
-  Serial.write(map(getIntensity(), 0, 1024, 0, 127));
+  Serial.write(127);
 }
 
+// play the notes for the specified column in the matrix
 void playColumn(int column) {
   for (uint8_t i=0; i<8; i++) {
     if(nextFrame[chessboard[i][column]]) {
@@ -344,10 +332,7 @@ void loop() {
     case MODE_DRUM_SEQ:     runDrumSeq();  break;
   }
 
-  updateMap();
-  // tell the trellis to set the LEDs we requested
-  trellis.setBrightness(map(getIntensity(), 0, 1024, 0, 15));
-  trellis.writeDisplay();
-  delay(10); // just to be on the safe side
+  writeFrame();
+  delay(10); // just to be on the safe side, you experiment with lowering this
 }
 
