@@ -207,6 +207,15 @@ int getIntensity() {
   return analogRead(POTI_INTENSITY);
 }
 
+bool isNextStep() {
+  if(nextStepMillis < millis()) {
+    nextStepMillis = millis() + getDelay();
+    return true;
+  } else {
+    return false;
+  }
+}
+
 void checkSwitches() {
   if (trellis.readSwitches()) {
     // go through every button
@@ -221,8 +230,7 @@ void checkSwitches() {
 
 // runs the Game of Life
 void runGame() {
-  if(nextStepMillis < millis()) {
-    nextStepMillis = millis() + getDelay();
+  if(isNextStep()) {
     // Clear out the next frame
     for(int c=0; c<64; c++) {
       buttonState[c] = 0;
@@ -316,8 +324,7 @@ void moveMarker(int toColumn) {
 
 int step = 0;
 void runDrumSeq() {
-  if(nextStepMillis < millis()) {
-    nextStepMillis = millis() + getDelay();
+  if(isNextStep()) {
     stopAllNotes();
     moveMarker(step);
     playColumn(step);
