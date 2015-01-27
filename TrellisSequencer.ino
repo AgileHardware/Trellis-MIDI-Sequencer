@@ -208,7 +208,7 @@ int getDelay() {
   return (1024 - analogRead(POTI_DELAY));
 }
 int getPitchBase() {
-  return 12 * map(analogRead(POTI_PITCH_BASE), 0, 1023, 3, 7);
+  return 12 * map(analogRead(POTI_PITCH_BASE), 0, 1023, 3, 8);
 }
 
 
@@ -307,16 +307,16 @@ void stopAllNotes() {
 
 
 void moveMarker(int toColumn) {
-  int prevColumn;
+  int fromColumn;
 
   if(toColumn > 0) {
-    prevColumn = toColumn - 1;
+    fromColumn = toColumn - 1;
   } else {
-    prevColumn = NUM_COLUMNS - 1;
+    fromColumn = NUM_COLUMNS - 1;
   }
 
   for (uint8_t i=0; i<NUM_COLUMNS; i++) {
-    nextFrame[chessboard[i][prevColumn]] = 0;
+    nextFrame[chessboard[i][fromColumn]] = 0;
     nextFrame[chessboard[i][toColumn]] = 1;
   }
 }
@@ -328,6 +328,7 @@ void runDrumSeq() {
     } else {
       step = 0;
     }
+    // alternatively play and stop notes
     if(step % 2 == 0) {
       moveMarker(step / 2);
       playColumn(step / 2);
