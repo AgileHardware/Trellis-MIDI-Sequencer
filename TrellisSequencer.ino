@@ -51,7 +51,8 @@ int chessboard[8][8] = {
   {12, 13, 14, 15, 60, 61, 62, 63}
 };
 
-bool nextFrame[64];
+bool buttonState[NUM_KEYS];
+bool nextFrame[NUM_KEYS];
 
 // This variable holds the time in milliseconds since boot when the next step should be run
 long nextStepMillis = 0;
@@ -178,11 +179,11 @@ void liveOrDie(int placeVal) {
   }
 
   if (neighbors == 3 && !trellis.isLED(placeVal)) {
-    nextFrame[placeVal] = 1;
+    buttonState[placeVal] = 1;
   } else if ((neighbors == 2 || neighbors == 3) && trellis.isLED(placeVal)) {
-    nextFrame[placeVal] = 1;
+    buttonState[placeVal] = 1;
   } else {
-    nextFrame[placeVal] = 0;
+    buttonState[placeVal] = 0;
   }
 }
 
@@ -212,7 +213,7 @@ void checkSwitches() {
     for (uint8_t i=0; i<NUM_KEYS; i++) {
       // if it was pressed, toggle the LED in that position
       if (trellis.justPressed(i)) {
-        nextFrame[i] = !nextFrame[i];
+        buttonState[i] = !buttonState[i];
       }
     }
   }
@@ -224,7 +225,7 @@ void runGame() {
     nextStepMillis = millis() + getDelay();
     // Clear out the next frame
     for(int c=0; c<64; c++) {
-      nextFrame[c] = 0;
+      buttonState[c] = 0;
     }
     //compute the next step
     for (uint8_t i=0; i<NUM_KEYS; i++) {
@@ -241,7 +242,7 @@ void setupGame() {
 // writes the next frame to the LED Matrix
 void writeFrame() {
   for (uint8_t i=0; i<NUM_KEYS; i++) {
-    if(nextFrame[i] == 1) {
+    if(buttonState[i] || nextFrame[i]) {
       trellis.setLED(i);
     } else {
       trellis.clrLED(i);
@@ -284,43 +285,51 @@ void stopNote(int note) {
 
 // play the notes for the specified column in the matrix
 void playColumn(int column) {
-  for (uint8_t i=0; i<8; i++) {
-    if(nextFrame[chessboard[i][column]]) {
+  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
+    if(buttonState[chessboard[i][column]]) {
       startNote(i);
-    }
-  }
-  delay(50);
-  for (uint8_t i=0; i<8; i++) {
-    if(nextFrame[chessboard[i][column]]) {
-      stopNote(i);
     }
   }
 }
 
-void flashColumn(int column) {
-  for (uint8_t i=0; i<8; i++) {
-    trellis.setLED(chessboard[i][column]);
+void stopAllNotes() {
+  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
+    stopNote(i);
   }
-  trellis.writeDisplay();
-  delay(100);
-  for (uint8_t i=0; i<8; i++) {
-    if(nextFrame[chessboard[i][column]] == 0) {
-      trellis.clrLED(chessboard[i][column]);
-    }
+}
+
+
+void moveMarker(int toColumn) {
+  int prevColumn;
+
+  if(toColumn > 0) {
+    prevColumn = toColumn - 1;
+  } else {
+    prevColumn = NUM_COLUMNS - 1;
   }
-  trellis.writeDisplay();
+
+  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
+    nextFrame[chessboard[i][prevColumn]] = 0;
+    nextFrame[chessboard[i][toColumn]] = 1;
+  }
 }
 
 int step = 0;
 void runDrumSeq() {
-  flashColumn(step);
-  playColumn(step);
-  checkSwitches();
-  if(step < 7) {
-    step++;
-  } else {
-    step = 0;
+  if(nextStepMillis < millis()) {
+    nextStepMillis = millis() + getDelay();
+    stopAllNotes();
+    moveMarker(step);
+    playColumn(step);
+
+    if(step < 7) {
+      step++;
+    } else {
+      step = 0;
+    }
   }
+
+  checkSwitches();
 }
 
 void loop() {
