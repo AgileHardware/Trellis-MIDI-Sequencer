@@ -4,7 +4,7 @@
   MIT license, all text above must be included in any redistribution
 
   Changes to include Midi Sequencer:
-  Written by Karl Sander
+  Written by Karl Sander for Agile Hardware.
  ****************************************************/
 
 #include <Wire.h>
@@ -23,11 +23,14 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 
 #define POTI_MODE       0
 #define POTI_DELAY      1
-#define POTI_INTENSITY  2
+#define POTI_PITCH_BASE  2
 
 #define MODE_SETUP_GAME 0
 #define MODE_RUN_GAME   1
 #define MODE_DRUM_SEQ   2
+
+// Connect the INT wire from Trellis to pin #5 or change this constant
+#define INTPIN          5
 
 /*
 This is the arrangment of Trellis matrices that this program is configured for.
@@ -57,8 +60,9 @@ bool nextFrame[NUM_KEYS];
 // This variable holds the time in milliseconds since boot when the next step should be run
 long nextStepMillis = 0;
 
-// Connect the INT wire from Trellis to pin #5 or change this constant
-#define INTPIN 5
+// if running a sequencer type program, this variable holds the current step
+int step = 0;
+
 
 // This function turns all LEDs on the board off
 void clearBoard() {
@@ -96,7 +100,7 @@ void setup() {
   runBootCheck();
 }
 
-void toggle(int placeVal) {
+void toggleLED(int placeVal) {
  if (trellis.isLED(placeVal))
     trellis.clrLED(placeVal);
   else
@@ -203,9 +207,10 @@ int getMode() {
 int getDelay() {
   return (1024 - analogRead(POTI_DELAY));
 }
-int getIntensity() {
-  return analogRead(POTI_INTENSITY);
+int getPitchBase() {
+  return 12 * map(analogRead(POTI_PITCH_BASE), 0, 1023, 3, 7);
 }
+
 
 bool isNextStep() {
   if(nextStepMillis < millis()) {
@@ -216,7 +221,7 @@ bool isNextStep() {
   }
 }
 
-void checkSwitches() {
+void checkButtons() {
   if (trellis.readSwitches()) {
     // go through every button
     for (uint8_t i=0; i<NUM_KEYS; i++) {
@@ -244,12 +249,13 @@ void runGame() {
 
 // This runs when the user can set up the layout for Game of Life
 void setupGame() {
-  checkSwitches();
+  checkButtons();
 }
 
 // writes the next frame to the LED Matrix
 void writeFrame() {
   for (uint8_t i=0; i<NUM_KEYS; i++) {
+    // this displays the addition of the buttonState und nextFrame arrays
     if(buttonState[i] || nextFrame[i]) {
       trellis.setLED(i);
     } else {
@@ -259,19 +265,20 @@ void writeFrame() {
   trellis.writeDisplay();
 }
 
-// The Note input for MIDI functions covers one octave from 0 = C to 6 = B
+// The Note input for MIDI functions covers one octave from 0 = C to 7 = C
 
 // Send a MIDI signal to start the specified note
 void startNote(int note) {
   Serial.write(0x90);
   switch (note) {
-    case 0: Serial.write(48); break;
-    case 1: Serial.write(50); break;
-    case 2: Serial.write(52); break;
-    case 3: Serial.write(53); break;
-    case 4: Serial.write(55); break;
-    case 5: Serial.write(57); break;
-    case 6: Serial.write(59); break;
+    case 0: Serial.write(getPitchBase() + 12); break;
+    case 1: Serial.write(getPitchBase() + 11); break;
+    case 2: Serial.write(getPitchBase() + 9); break;
+    case 3: Serial.write(getPitchBase() + 7); break;
+    case 4: Serial.write(getPitchBase() + 5); break;
+    case 5: Serial.write(getPitchBase() + 4); break;
+    case 6: Serial.write(getPitchBase() + 2); break;
+    case 7: Serial.write(getPitchBase()); break;
   }
   Serial.write(127);
 }
@@ -279,15 +286,7 @@ void startNote(int note) {
 // send a midi signal to end the specified note
 void stopNote(int note) {
   Serial.write(0x80);
-  switch (note) {
-    case 0: Serial.write(48); break;
-    case 1: Serial.write(50); break;
-    case 2: Serial.write(52); break;
-    case 3: Serial.write(53); break;
-    case 4: Serial.write(55); break;
-    case 5: Serial.write(57); break;
-    case 6: Serial.write(59); break;
-  }
+  Serial.write(note);
   Serial.write(127);
 }
 
@@ -301,7 +300,7 @@ void playColumn(int column) {
 }
 
 void stopAllNotes() {
-  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
+  for (uint8_t i=24; i<108; i++) {
     stopNote(i);
   }
 }
@@ -322,33 +321,32 @@ void moveMarker(int toColumn) {
   }
 }
 
-int step = 0;
 void runDrumSeq() {
   if(isNextStep()) {
-    stopAllNotes();
-    moveMarker(step);
-    playColumn(step);
-
-    if(step < 7) {
+    if(step < 15) {
       step++;
     } else {
       step = 0;
     }
+    if(step % 2 == 0) {
+      moveMarker(step / 2);
+      playColumn(step / 2);
+    }
+    else {
+      stopAllNotes();
+    }
   }
-
-  checkSwitches();
+  checkButtons();
 }
 
 void loop() {
-  int mode = getMode();
-
-  switch (mode) {
+  switch (getMode()) {
     case MODE_SETUP_GAME:   setupGame();   break;
     case MODE_RUN_GAME:     runGame();     break;
     case MODE_DRUM_SEQ:     runDrumSeq();  break;
   }
 
   writeFrame();
-  delay(10); // just to be on the safe side, you experiment with lowering this
+  delay(10); // just to be on the safe side, you can experiment with lowering this
 }
 
