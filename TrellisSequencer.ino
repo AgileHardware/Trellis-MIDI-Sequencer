@@ -304,41 +304,34 @@ void writeFrame() {
 
 // The Note input for MIDI functions covers one octave from 0 = C to 7 = C
 
-// Send a MIDI signal to start the specified note
-void startNote(int note) {
-  Serial.write(0x90);
+void getNote(int note) {
   switch (note) {
-    case 0: Serial.write(getPitchBase() + 12); break;
-    case 1: Serial.write(getPitchBase() + 11); break;
-    case 2: Serial.write(getPitchBase() + 9); break;
-    case 3: Serial.write(getPitchBase() + 7); break;
-    case 4: Serial.write(getPitchBase() + 5); break;
-    case 5: Serial.write(getPitchBase() + 4); break;
-    case 6: Serial.write(getPitchBase() + 2); break;
-    case 7: Serial.write(getPitchBase()); break;
+    case 0: return getPitchBase() + 12;
+    case 1: return getPitchBase() + 11;
+    case 2: return getPitchBase() + 9;
+    case 3: return getPitchBase() + 7;
+    case 4: return getPitchBase() + 5;
+    case 5: return getPitchBase() + 4;
+    case 6: return getPitchBase() + 2;
+    case 7: return getPitchBase());
   }
-  Serial.write(127);
 }
 
-// send a midi signal to end the specified note
-void stopNote(int note) {
-  Serial.write(0x80);
-  Serial.write(note);
-  Serial.write(127);
-}
 
 // play the notes for the specified column in the matrix
 void playColumn(int column) {
   for (uint8_t i=0; i<NUM_COLUMNS; i++) {
     if(buttonState[chessboard[i][column]]) {
-      startNote(i);
+      midiNoteOn(i, getNote(i), 127):
     }
   }
 }
 
 void stopAllNotes() {
-  for (uint8_t i=24; i<108; i++) {
-    stopNote(i);
+  for (uint8_t channel=0; channel <8; channel++) {
+    for (uint8_t i=24; i<108; i++) {
+      midiNoteOff(0, i, 127);
+    }
   }
 }
 
