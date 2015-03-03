@@ -304,7 +304,7 @@ void writeFrame() {
 
 // The Note input for MIDI functions covers one octave from 0 = C to 7 = C
 
-void getNote(int note) {
+int getNote(int note) {
   switch (note) {
     case 0: return getPitchBase() + 12;
     case 1: return getPitchBase() + 11;
@@ -313,7 +313,7 @@ void getNote(int note) {
     case 4: return getPitchBase() + 5;
     case 5: return getPitchBase() + 4;
     case 6: return getPitchBase() + 2;
-    case 7: return getPitchBase());
+    case 7: return getPitchBase();
   }
 }
 
@@ -322,7 +322,7 @@ void getNote(int note) {
 void playColumn(int column) {
   for (uint8_t i=0; i<NUM_COLUMNS; i++) {
     if(buttonState[chessboard[i][column]]) {
-      midiNoteOn(i, getNote(i), 127):
+      midiNoteOn(i, getNote(i), 127);
     }
   }
 }
