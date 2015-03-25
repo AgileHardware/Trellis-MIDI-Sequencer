@@ -9,7 +9,6 @@
 
 #include <Wire.h>
 #include "Adafruit_Trellis.h"
-#include <SoftwareSerial.h>
 
 Adafruit_Trellis matrix0 = Adafruit_Trellis();
 Adafruit_Trellis matrix1 = Adafruit_Trellis();
@@ -18,15 +17,14 @@ Adafruit_Trellis matrix3 = Adafruit_Trellis();
 
 Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2, &matrix3);
 
-SoftwareSerial VS1053_MIDI(0, 2);
-
 #define NUM_TRELLIS     4
 #define NUM_COLUMNS     8
 #define NUM_KEYS        (NUM_TRELLIS * 16)
 
 #define POTI_MODE       0
 #define POTI_DELAY      1
-#define POTI_PITCH_BASE  2
+#define POTI_PITCH_BASE 2
+#define POTI_INSTRUMENT 3
 
 #define MODE_SETUP_GAME 0
 #define MODE_RUN_GAME   1
@@ -35,13 +33,7 @@ SoftwareSerial VS1053_MIDI(0, 2);
 // Connect the INT wire from Trellis to pin #5 or change this constant
 #define INTPIN          5
 
-// Pins for Music Maker Shield
-
-#define VS1053_RX  2 // This is the pin that connects to the RX pin on VS1053
-#define VS1053_RESET 9 // This is the pin that connects to the RESET pin on VS1053
-
-// MIDI Data
-
+#define VS1053_RESET 9 // This is the pin that connects to the RESET
 // See http://www.vlsi.fi/fileadmin/datasheets/vs1053.pdf Pg 31
 #define VS1053_BANK_DEFAULT 0x00
 #define VS1053_BANK_DRUMS1 0x78
@@ -58,6 +50,10 @@ SoftwareSerial VS1053_MIDI(0, 2);
 #define MIDI_CHAN_VOLUME 0x07
 #define MIDI_CHAN_PROGRAM 0xC0
 
+const uint8_t lead[16] = {1,11,12,19,29,47,52,53,54,55,56,57,59,83,86,88};
+const uint8_t pad[16] = {15, 20, 23, 89, 90, 91, 92, 93, 94, 95, 96, 0, 0, 0, 0, 0};
+const uint8_t bass[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+const uint8_t drum[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
 /*
 This is the arrangment of Trellis matrices that this program is configured for.
@@ -106,7 +102,9 @@ void runBootCheck() {
     for (uint8_t j=0; j<8; j++) {
       trellis.setLED(chessboard[i][j]);
       trellis.writeDisplay();
-      delay(10);
+      midiNoteOn(0, i+60, 64);
+      delay(30);
+      midiNoteOff(0, i+60, 64);
     }
   }
 
@@ -116,25 +114,28 @@ void runBootCheck() {
 void setup() {
   // 31250 is the baud rate for the classic serial midi protocol
   // 115200 is the default for virtual serial midi devices on computers
-  Serial.begin(115200);
-  VS1053_MIDI.begin(31250);
+
+  Serial1.begin(31250);
+
   // INT pin requires a pullup
   pinMode(INTPIN, INPUT);
   digitalWrite(INTPIN, HIGH);
 
   trellis.begin(0x72, 0x71, 0x70, 0x73);
 
-  runBootCheck();
-
   pinMode(VS1053_RESET, OUTPUT);
+  pinMode(10, OUTPUT);
   digitalWrite(VS1053_RESET, LOW);
   delay(10);
   digitalWrite(VS1053_RESET, HIGH);
   delay(10);
 
   midiSetChannelBank(0, VS1053_BANK_MELODY);
-  midiSetInstrument(0, VS1053_GM1_OCARINA);
-  midiSetChannelVolume(0, 127);
+  midiSetInstrument(0, 19);
+  midiSetChannelVolume(0, 48);
+  setSpeakersOn(false);
+  delay(100);
+  runBootCheck();
 }
 
 void toggleLED(int placeVal) {
@@ -247,6 +248,9 @@ int getDelay() {
 int getPitchBase() {
   return 12 * map(analogRead(POTI_PITCH_BASE), 0, 1023, 3, 8);
 }
+int getInstrument() {
+  return map(analogRead(POTI_INSTRUMENT), 0, 1023, 0, 15);
+}
 
 
 bool isNextStep() {
@@ -322,7 +326,15 @@ int getNote(int note) {
 void playColumn(int column) {
   for (uint8_t i=0; i<NUM_COLUMNS; i++) {
     if(buttonState[chessboard[i][column]]) {
-      midiNoteOn(i, getNote(i), 127);
+      midiNoteOn(0, getNote(i), 127);
+    }
+  }
+}
+
+void stopColumn(int column) {
+  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
+    if(buttonState[chessboard[i][column]]) {
+      midiNoteOff(0, getNote(i), 127);
     }
   }
 }
@@ -330,7 +342,7 @@ void playColumn(int column) {
 void stopAllNotes() {
   for (uint8_t channel=0; channel <8; channel++) {
     for (uint8_t i=24; i<108; i++) {
-      midiNoteOff(0, i, 127);
+      midiNoteOff(channel, i, 127);
     }
   }
 }
@@ -351,7 +363,12 @@ void moveMarker(int toColumn) {
   }
 }
 
+void checkInstrument() {
+  midiSetInstrument(0, lead[getInstrument()]);
+}
+
 void runDrumSeq() {
+  checkInstrument();
   if(isNextStep()) {
     if(step < 15) {
       step++;
@@ -364,7 +381,7 @@ void runDrumSeq() {
       playColumn(step / 2);
     }
     else {
-      stopAllNotes();
+      midiChanOff(0);
     }
   }
   checkButtons();
@@ -386,8 +403,8 @@ void midiSetInstrument(uint8_t chan, uint8_t inst) {
   inst --; // page 32 has instruments starting with 1 not 0 :(
   if (inst > 127) return;
 
-  VS1053_MIDI.write(MIDI_CHAN_PROGRAM | chan);
-  VS1053_MIDI.write(inst);
+  Serial1.write(MIDI_CHAN_PROGRAM | chan);
+  Serial1.write(inst);
 }
 
 
@@ -395,18 +412,18 @@ void midiSetChannelVolume(uint8_t chan, uint8_t vol) {
   if (chan > 15) return;
   if (vol > 127) return;
 
-  VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
-  VS1053_MIDI.write(MIDI_CHAN_VOLUME);
-  VS1053_MIDI.write(vol);
+  Serial1.write(MIDI_CHAN_MSG | chan);
+  Serial1.write(MIDI_CHAN_VOLUME);
+  Serial1.write(vol);
 }
 
 void midiSetChannelBank(uint8_t chan, uint8_t bank) {
   if (chan > 15) return;
   if (bank > 127) return;
 
-  VS1053_MIDI.write(MIDI_CHAN_MSG | chan);
-  VS1053_MIDI.write((uint8_t)MIDI_CHAN_BANK);
-  VS1053_MIDI.write(bank);
+  Serial1.write(MIDI_CHAN_MSG | chan);
+  Serial1.write((uint8_t)MIDI_CHAN_BANK);
+  Serial1.write(bank);
 }
 
 void midiNoteOn(uint8_t chan, uint8_t n, uint8_t vel) {
@@ -414,9 +431,9 @@ void midiNoteOn(uint8_t chan, uint8_t n, uint8_t vel) {
   if (n > 127) return;
   if (vel > 127) return;
 
-  VS1053_MIDI.write(MIDI_NOTE_ON | chan);
-  VS1053_MIDI.write(n);
-  VS1053_MIDI.write(vel);
+  Serial1.write(MIDI_NOTE_ON | chan);
+  Serial1.write(n);
+  Serial1.write(vel);
 }
 
 void midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel) {
@@ -424,7 +441,21 @@ void midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel) {
   if (n > 127) return;
   if (vel > 127) return;
 
-  VS1053_MIDI.write(MIDI_NOTE_OFF | chan);
-  VS1053_MIDI.write(n);
-  VS1053_MIDI.write(vel);
+  Serial1.write(MIDI_NOTE_OFF | chan);
+  Serial1.write(n);
+  Serial1.write(vel);
+}
+
+void setSpeakersOn(bool on) {
+  if(on) {
+    digitalWrite(10, HIGH);
+  } else {
+    digitalWrite(10, LOW);
+  }
+}
+
+void midiChanOff(uint8_t chan) {
+  for(uint8_t i = 0; i < 128; i++) {
+    midiNoteOff(chan, i, 127);
+  }
 }
