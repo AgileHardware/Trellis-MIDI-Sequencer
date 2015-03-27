@@ -26,9 +26,10 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 #define POTI_PITCH_BASE 2
 #define POTI_INSTRUMENT 3
 
-#define MODE_SETUP_GAME 0
-#define MODE_RUN_GAME   1
-#define MODE_DRUM_SEQ   2
+#define CHANNEL_DRUM    0
+#define CHANNEL_BASS    1
+#define CHANNEL_PAD     2
+#define CHANNEL_LEAD    3
 
 // Connect the INT wire from Trellis to pin #5 or change this constant
 #define INTPIN          5
@@ -50,10 +51,16 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 #define MIDI_CHAN_VOLUME 0x07
 #define MIDI_CHAN_PROGRAM 0xC0
 
-const uint8_t lead[16] = {1,11,12,19,29,47,52,53,54,55,56,57,59,83,86,88};
-const uint8_t pad[16] = {15, 20, 23, 89, 90, 91, 92, 93, 94, 95, 96, 0, 0, 0, 0, 0};
-const uint8_t bass[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-const uint8_t drum[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+#define VOLUME              8
+#define VOLUME_FACTOR_DRUMS 12
+#define VOLUME_FACTOR_BASS  10
+#define VOLUME_FACTOR_PAD   8
+#define VOLUME_FACTOR_LEAD  10
+
+const uint8_t lead[8] = {10, 116, 29, 86, 20, 114,  7, 7};
+const uint8_t pad[8]  = {42, 114, 19, 53, 20, 77,  83, 83};
+const uint8_t bass[8] = {38, 118, 38, 54, 53, 121,  87,   87};
+const uint8_t drum[8] = {3,  4,   15, 116,15, 120,  119, 119};
 
 /*
 This is the arrangment of Trellis matrices that this program is configured for.
@@ -76,6 +83,8 @@ int chessboard[8][8] = {
   { 8,  9, 10, 11, 56, 57, 58, 59},
   {12, 13, 14, 15, 60, 61, 62, 63}
 };
+
+bool pattern[4][NUM_KEYS];
 
 bool buttonState[NUM_KEYS];
 bool nextFrame[NUM_KEYS];
@@ -130,10 +139,15 @@ void setup() {
   digitalWrite(VS1053_RESET, HIGH);
   delay(10);
 
-  midiSetChannelBank(0, VS1053_BANK_MELODY);
-  midiSetInstrument(0, 19);
-  midiSetChannelVolume(0, 48);
-  setSpeakersOn(false);
+  midiSetChannelBank(0, VS1053_BANK_DRUMS1);
+  midiSetChannelBank(1, VS1053_BANK_MELODY);
+  midiSetChannelBank(2, VS1053_BANK_MELODY);
+  midiSetChannelBank(3, VS1053_BANK_MELODY);
+  midiSetChannelVolume(0, VOLUME * VOLUME_FACTOR_DRUMS);
+  midiSetChannelVolume(1, VOLUME * VOLUME_FACTOR_BASS);
+  midiSetChannelVolume(2, VOLUME * VOLUME_FACTOR_PAD);
+  midiSetChannelVolume(3, VOLUME * VOLUME_FACTOR_LEAD);
+  setSpeakersOn(true);
   delay(100);
   runBootCheck();
 }
@@ -145,113 +159,28 @@ void toggleLED(int placeVal) {
     trellis.setLED(placeVal);
 }
 
-/* Directions are ordered clockwise starting with 0 = NORTH */
-int getNeighbor(int placeVal, int neighbor) {
-  int px = 0;
-  int py = 0;
-  int x = 0;
-  int y = 0;
-
-  getPosition(placeVal, &px, &py);
-  switch (neighbor) {
-    case 0:
-      x = px;
-      y = py - 1;
-      break;
-    case 1:
-      x = px + 1;
-      y = py - 1;
-      break;
-    case 2:
-      x = px + 1;
-      y = py;
-      break;
-    case 3:
-      x = px + 1;
-      y = py + 1;
-      break;
-    case 4:
-      x = px;
-      y = py + 1;
-      break;
-    case 5:
-      x = px - 1;
-      y = py + 1;
-      break;
-    case 6:
-      x = px - 1;
-      y = py;
-      break;
-    case 7:
-      x = px - 1;
-      y = py - 1;
-      break;
-    default:
-      x = 0;
-      y = 0;
-  }
-  if (x < 0) x = 7;
-  if (x > 7) x = 0;
-  if (y < 0) y = 7;
-  if (y > 7) y = 0;
-
-  return chessboard[x][y];
-}
-
-int getPosition(int pv, int *tx, int *ty) {
-  for (int i=0; i<8; i++) {
-    for (int j=0; j<8; j++) {
-      if (chessboard[i][j] == pv) {
-        *tx = i;
-        *ty = j;
-        return 1;
-      }
-    }
-  }
-  return -1;
-}
-
-void liveOrDie(int placeVal) {
-  // Calculate whether to live or die the next round
-  int neighbors = 0;
-  for (int d=0; d<=7; d++) {
-    if (trellis.isLED(getNeighbor(placeVal, d))) {
-      neighbors++;
-    }
-  }
-
-  if (neighbors == 3 && !trellis.isLED(placeVal)) {
-    buttonState[placeVal] = 1;
-  } else if ((neighbors == 2 || neighbors == 3) && trellis.isLED(placeVal)) {
-    buttonState[placeVal] = 1;
-  } else {
-    buttonState[placeVal] = 0;
-  }
-}
-
-int getMode() {
+int getChannel() {
   int state = analogRead(POTI_MODE);
   if(state > 768) {
-    return 3;
+    return CHANNEL_LEAD;
   } else if(state > 512) {
-    return MODE_DRUM_SEQ;
+    return CHANNEL_PAD;
   } else if(state > 256) {
-    return MODE_RUN_GAME;
+    return CHANNEL_BASS;
   } else {
-    return MODE_SETUP_GAME;
+    return CHANNEL_DRUM;
   }
 }
 
 int getDelay() {
-  return (1024 - analogRead(POTI_DELAY));
+  return map((1024 - analogRead(POTI_DELAY)), 1024, 0, 512, 0);
 }
 int getPitchBase() {
   return 12 * map(analogRead(POTI_PITCH_BASE), 0, 1023, 3, 8);
 }
 int getInstrument() {
-  return map(analogRead(POTI_INSTRUMENT), 0, 1023, 0, 15);
+  return map(analogRead(POTI_INSTRUMENT), 0, 1023, 0, 7);
 }
-
 
 bool isNextStep() {
   if(nextStepMillis < millis()) {
@@ -268,36 +197,18 @@ void checkButtons() {
     for (uint8_t i=0; i<NUM_KEYS; i++) {
       // if it was pressed, toggle the LED in that position
       if (trellis.justPressed(i)) {
-        buttonState[i] = !buttonState[i];
+        pattern[getChannel()][i] = !pattern[getChannel()][i];
       }
     }
   }
 }
 
-// runs the Game of Life
-void runGame() {
-  if(isNextStep()) {
-    // Clear out the next frame
-    for(int c=0; c<64; c++) {
-      buttonState[c] = 0;
-    }
-    //compute the next step
-    for (uint8_t i=0; i<NUM_KEYS; i++) {
-      liveOrDie(i);
-    }
-  }
-}
-
-// This runs when the user can set up the layout for Game of Life
-void setupGame() {
-  checkButtons();
-}
 
 // writes the next frame to the LED Matrix
 void writeFrame() {
   for (uint8_t i=0; i<NUM_KEYS; i++) {
     // this displays the addition of the buttonState und nextFrame arrays
-    if(buttonState[i] || nextFrame[i]) {
+    if(pattern[getChannel()][i] || nextFrame[i]) {
       trellis.setLED(i);
     } else {
       trellis.clrLED(i);
@@ -321,31 +232,132 @@ int getNote(int note) {
   }
 }
 
+int getNoteWithPitch(int note, int pitch) {
+  switch (note) {
+    case 0: return pitch + 12;
+    case 1: return pitch + 11;
+    case 2: return pitch + 9;
+    case 3: return pitch + 7;
+    case 4: return pitch + 5;
+    case 5: return pitch + 4;
+    case 6: return pitch + 2;
+    case 7: return pitch;
+  }
+}
+
+int getDrumNote(int note) {
+  if(getInstrument() == 3) {
+    switch (note) {
+      case 0: return 84;
+      case 1: return 80;
+      case 2: return 76;
+      case 3: return 72;
+      case 4: return 68;
+      case 5: return 64;
+      case 6: return 60;
+      case 7: return 56;
+    }
+  }else {
+    switch (note) {
+      case 0: return 60;
+      case 1: return 59;
+      case 2: return 57;
+      case 3: return 50;
+      case 4: return 48;
+      case 5: return 40;
+      case 6: return 36;
+      case 7: return 38;
+    }
+  }
+}
+
+
 
 // play the notes for the specified column in the matrix
 void playColumn(int column) {
-  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
-    if(buttonState[chessboard[i][column]]) {
-      midiNoteOn(0, getNote(i), 127);
+  for (uint8_t chan=0; chan<4; chan++) {
+    for (uint8_t i=0; i<NUM_COLUMNS; i++) {
+      if(pattern[chan][chessboard[i][column]]) {
+        if(chan != 0) {
+          midiNoteOn(chan, getNote(i), 127);
+        } else  {
+          midiNoteOn(chan, getDrumNote(i), 127);
+        }
+      }
     }
   }
 }
 
+
 void stopColumn(int column) {
-  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
-    if(buttonState[chessboard[i][column]]) {
-      midiNoteOff(0, getNote(i), 127);
+  for (uint8_t chan=0; chan<4; chan++) {
+    for (uint8_t i=0; i<8; i++) {
+      if(pattern[chan][chessboard[i][column]]) {
+        if (chan == 1 || chan == 3) {
+          allPitchesOff(chan, i);
+        } else if (chan == 0) {
+          midiNoteOff(chan, getDrumNote(i), 127);
+        }
+      }
+    }
+    if(chan == 2 && stopPad(column)) {
+      fullChannelOff(2);
     }
   }
+}
+
+bool stopPad(uint8_t column) {
+  uint8_t next;
+  bool isEmpty = true;
+  bool hasNext = false;
+  if(column < 7) {
+    next = column + 1;
+  } else {
+    next = 0;
+  }
+  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
+    for (uint8_t j=0; j<NUM_COLUMNS; j++) {
+      if(pattern[2][chessboard[i][j]]) {
+        isEmpty = false;
+        if(j == next) {
+          return true;
+        }
+      }
+    }
+  }
+  return isEmpty;
+}
+
+void allPitchesOff(int chan, int note) {
+  midiNoteOff(chan, getNoteWithPitch(note, 36), 127);
+  midiNoteOff(chan, getNoteWithPitch(note, 48), 127);
+  midiNoteOff(chan, getNoteWithPitch(note, 60), 127);
+  midiNoteOff(chan, getNoteWithPitch(note, 72), 127);
+  midiNoteOff(chan, getNoteWithPitch(note, 84), 127);
+  midiNoteOff(chan, getNoteWithPitch(note, 96), 127);
+  midiNoteOff(chan, getNoteWithPitch(note, 108), 127);
 }
 
 void stopAllNotes() {
-  for (uint8_t channel=0; channel <8; channel++) {
-    for (uint8_t i=24; i<108; i++) {
-      midiNoteOff(channel, i, 127);
+  for (uint8_t chan=0; chan<4; chan++) {
+    for (uint8_t i=0; i<NUM_COLUMNS; i++) {
+      for (uint8_t j=0; j<NUM_COLUMNS; j++) {
+        if(pattern[chan][chessboard[i][j]] && chan != 0) {
+          midiNoteOff(chan, getNote(i), 127);
+        } else if (pattern[chan][chessboard[i][j]]){
+          midiNoteOff(chan, getDrumNote(i), 127);
+        }
+      }
     }
   }
 }
+
+void fullChannelOff(int chan) {
+  for (uint8_t note = 36; note < 121; note++) {
+    midiNoteOff(chan, note, 127);
+  }
+}
+
 
 
 void moveMarker(int toColumn) {
@@ -363,12 +375,21 @@ void moveMarker(int toColumn) {
   }
 }
 
-void checkInstrument() {
-  midiSetInstrument(0, lead[getInstrument()]);
+void updateInstrument() {
+  if(getInstrument() < 3) {
+    midiSetChannelBank(0, VS1053_BANK_DRUMS1);
+  }
+  else {
+    midiSetChannelBank(0, VS1053_BANK_MELODY);
+  }
+  midiSetInstrument(0, drum[getInstrument()]);
+  midiSetInstrument(1, bass[getInstrument()]);
+  midiSetInstrument(2, pad[getInstrument()]);
+  midiSetInstrument(3, lead[getInstrument()]);
 }
 
-void runDrumSeq() {
-  checkInstrument();
+void runSeq(uint8_t channel) {
+  updateInstrument();
   if(isNextStep()) {
     if(step < 15) {
       step++;
@@ -379,20 +400,15 @@ void runDrumSeq() {
     if(step % 2 == 0) {
       moveMarker(step / 2);
       playColumn(step / 2);
-    }
-    else {
-      midiChanOff(0);
+    } else {
+      stopColumn((step - 1)/2);
     }
   }
   checkButtons();
 }
 
 void loop() {
-  switch (getMode()) {
-    case MODE_SETUP_GAME:   setupGame();   break;
-    case MODE_RUN_GAME:     runGame();     break;
-    case MODE_DRUM_SEQ:     runDrumSeq();  break;
-  }
+  runSeq(getChannel());
 
   writeFrame();
   delay(10); // just to be on the safe side, you can experiment with lowering this
