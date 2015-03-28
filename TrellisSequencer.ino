@@ -52,9 +52,9 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 #define MIDI_CHAN_PROGRAM 0xC0
 
 #define VOLUME              8
-#define VOLUME_FACTOR_DRUMS 12
+#define VOLUME_FACTOR_DRUMS 11
 #define VOLUME_FACTOR_BASS  10
-#define VOLUME_FACTOR_PAD   8
+#define VOLUME_FACTOR_PAD   9
 #define VOLUME_FACTOR_LEAD  10
 
 const uint8_t lead[8] = {10, 116, 29, 86, 20, 114,  7, 7};
@@ -257,7 +257,7 @@ int getDrumNote(int note) {
       case 6: return 60;
       case 7: return 56;
     }
-  }else {
+  } else {
     switch (note) {
       case 0: return 60;
       case 1: return 59;
@@ -309,7 +309,6 @@ void stopColumn(int column) {
 bool stopPad(uint8_t column) {
   uint8_t next;
   bool isEmpty = true;
-  bool hasNext = false;
   if(column < 7) {
     next = column + 1;
   } else {
