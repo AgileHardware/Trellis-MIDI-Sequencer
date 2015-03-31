@@ -127,6 +127,10 @@ void runBootCheck() {
 }
 
 void setup() {
+
+  // uncomment the following for debugging, eg figuring out your chessboard assignment
+  // Serial.begin(115200);
+
   // 31250 is the baud rate for the classic serial midi protocol
   // 115200 is the default for virtual serial midi devices on computers
   // Serial1 is specific to the Arduino Leonardo, change according to your model
@@ -207,6 +211,9 @@ void checkButtons() {
       if (trellis.justPressed(i)) {
         // toggle the pressed position in the pattern
         pattern[getChannel()][i] = !pattern[getChannel()][i];
+
+        // uncomment the following to figure out chessboard assignment
+        // Serial.writeln(i);
       }
     }
   }
