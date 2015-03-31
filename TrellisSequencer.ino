@@ -1,10 +1,13 @@
 /***************************************************
-  Original Trellis Game of Life Code:
+  Written by Karl Sander for Agile Hardware.
+
+  Originally adapted from Trellis Game of Life Example:
   Written by Tony Sherwood for Adafruit Industries.
   MIT license, all text above must be included in any redistribution
 
-  Changes to include Midi Sequencer:
-  Written by Karl Sander for Agile Hardware.
+  Functions to send MIDI signals taken from Adafruit VS1053 Library Examples > player_miditest:
+  Written by Limor Fried/Ladyada for Adafruit Industries.
+  BSD license, all text above must be included in any redistribution
  ****************************************************/
 
 #include <Wire.h>
@@ -126,7 +129,7 @@ void runBootCheck() {
 void setup() {
   // 31250 is the baud rate for the classic serial midi protocol
   // 115200 is the default for virtual serial midi devices on computers
-
+  // Serial1 is specific to the Arduino Leonardo, change according to your model
   Serial1.begin(31250);
 
   // INT pin requires a pullup
