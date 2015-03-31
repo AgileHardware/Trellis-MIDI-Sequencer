@@ -34,38 +34,39 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 // Connect the INT wire from Trellis to pin #5 or change this constant
 #define INTPIN          5
 
-#define VS1053_RESET 9 // This is the pin that connects to the RESET
-// See http://www.vlsi.fi/fileadmin/datasheets/vs1053.pdf Pg 31
+#define VS1053_RESET    9 // This is the pin that connects to the RESET
+
+// Constants for midi signals accepted by the vs1053. See http://www.vlsi.fi/fileadmin/datasheets/vs1053.pdf Pg 31
 #define VS1053_BANK_DEFAULT 0x00
-#define VS1053_BANK_DRUMS1 0x78
-#define VS1053_BANK_DRUMS2 0x7F
-#define VS1053_BANK_MELODY 0x79
+#define VS1053_BANK_DRUMS1  0x78
+#define VS1053_BANK_DRUMS2  0x7F
+#define VS1053_BANK_MELODY  0x79
+#define MIDI_NOTE_ON        0x90
+#define MIDI_NOTE_OFF       0x80
+#define MIDI_CHAN_MSG       0xB0
+#define MIDI_CHAN_BANK      0x00
+#define MIDI_CHAN_VOLUME    0x07
+#define MIDI_CHAN_PROGRAM   0xC0
 
-// See http://www.vlsi.fi/fileadmin/datasheets/vs1053.pdf Pg 32 for more!
-#define VS1053_GM1_OCARINA 80
-
-#define MIDI_NOTE_ON  0x90
-#define MIDI_NOTE_OFF 0x80
-#define MIDI_CHAN_MSG 0xB0
-#define MIDI_CHAN_BANK 0x00
-#define MIDI_CHAN_VOLUME 0x07
-#define MIDI_CHAN_PROGRAM 0xC0
-
+// Volume from 0 (mute) to 10; Factors to balance instruments from 0 (off) to 12
 #define VOLUME              8
 #define VOLUME_FACTOR_DRUMS 11
 #define VOLUME_FACTOR_BASS  10
 #define VOLUME_FACTOR_PAD   9
 #define VOLUME_FACTOR_LEAD  10
 
-const uint8_t lead[8] = {10, 116, 29, 86, 20, 114,  7, 7};
-const uint8_t pad[8]  = {42, 114, 19, 53, 20, 77,  83, 83};
-const uint8_t bass[8] = {38, 118, 38, 54, 53, 121,  87,   87};
-const uint8_t drum[8] = {3,  4,   15, 116,15, 120,  119, 119};
+#define HEADPHONES_ONLY     false
+
+// Instruments see http://www.vlsi.fi/fileadmin/datasheets/vs1053.pdf Pg 32
+const uint8_t lead[8] = {10, 116, 29, 86,  20, 114, 7,   7};
+const uint8_t pad[8]  = {42, 114, 19, 53,  20, 77,  83,  83};
+const uint8_t bass[8] = {38, 118, 38, 54,  53, 121, 87,  87};
+const uint8_t drum[8] = {3,  4,   15, 116, 15, 120, 119, 119};
 
 /*
 This is the arrangment of Trellis matrices that this program is configured for.
 If your setup is different, you'll have to change the numbers in the chessboard array accordingly.
-Hint: you can figure out your arrangment by adding a serial print function to the checkButtons function and pressing the buttons.
+Hint: you can figure out your arrangment by adding a serial print function to the checkButtons function and pressing all the buttons.
 
 [ARDUINO]--[0x70]--[0x71]
                      |
@@ -84,15 +85,16 @@ int chessboard[8][8] = {
   {12, 13, 14, 15, 60, 61, 62, 63}
 };
 
+// stores the patterns for all 4 channels
 bool pattern[4][NUM_KEYS];
 
-bool buttonState[NUM_KEYS];
+// stores the playhead
 bool nextFrame[NUM_KEYS];
 
 // This variable holds the time in milliseconds since boot when the next step should be run
 long nextStepMillis = 0;
 
-// if running a sequencer type program, this variable holds the current step
+// current step in the sequencer
 int step = 0;
 
 
@@ -105,6 +107,7 @@ void clearBoard() {
 }
 
 // Turn all LEDs on one by one, row by row.
+// play one octave of notes
 // If this looks strange, adjust the chessboard matrix.
 void runBootCheck() {
   for (uint8_t i=0; i<8; i++) {
@@ -147,8 +150,8 @@ void setup() {
   midiSetChannelVolume(1, VOLUME * VOLUME_FACTOR_BASS);
   midiSetChannelVolume(2, VOLUME * VOLUME_FACTOR_PAD);
   midiSetChannelVolume(3, VOLUME * VOLUME_FACTOR_LEAD);
-  setSpeakersOn(true);
-  delay(100);
+  setSpeakersOn(!HEADPHONES_ONLY);
+  delay(10);
   runBootCheck();
 }
 
@@ -158,6 +161,8 @@ void toggleLED(int placeVal) {
   else
     trellis.setLED(placeVal);
 }
+
+// functions to get user settings from the potentionmeters
 
 int getChannel() {
   int state = analogRead(POTI_MODE);
@@ -182,6 +187,7 @@ int getInstrument() {
   return map(analogRead(POTI_INSTRUMENT), 0, 1023, 0, 7);
 }
 
+// check if enough time has passed to run the next step
 bool isNextStep() {
   if(nextStepMillis < millis()) {
     nextStepMillis = millis() + getDelay();
@@ -195,19 +201,18 @@ void checkButtons() {
   if (trellis.readSwitches()) {
     // go through every button
     for (uint8_t i=0; i<NUM_KEYS; i++) {
-      // if it was pressed, toggle the LED in that position
       if (trellis.justPressed(i)) {
+        // toggle the pressed position in the pattern
         pattern[getChannel()][i] = !pattern[getChannel()][i];
       }
     }
   }
 }
 
-
 // writes the next frame to the LED Matrix
 void writeFrame() {
   for (uint8_t i=0; i<NUM_KEYS; i++) {
-    // this displays the addition of the buttonState und nextFrame arrays
+    // this displays the sum of the pattern and nextFrame arrays
     if(pattern[getChannel()][i] || nextFrame[i]) {
       trellis.setLED(i);
     } else {
@@ -218,7 +223,6 @@ void writeFrame() {
 }
 
 // The Note input for MIDI functions covers one octave from 0 = C to 7 = C
-
 int getNote(int note) {
   switch (note) {
     case 0: return getPitchBase() + 12;
@@ -245,6 +249,7 @@ int getNoteWithPitch(int note, int pitch) {
   }
 }
 
+// for the drum channel, different note values are appropriate because it is not melodic. It should also not be affected by pitch changes
 int getDrumNote(int note) {
   if(getInstrument() == 3) {
     switch (note) {
@@ -271,16 +276,16 @@ int getDrumNote(int note) {
   }
 }
 
-
-
 // play the notes for the specified column in the matrix
 void playColumn(int column) {
   for (uint8_t chan=0; chan<4; chan++) {
     for (uint8_t i=0; i<NUM_COLUMNS; i++) {
       if(pattern[chan][chessboard[i][column]]) {
         if(chan != 0) {
+          // is not drum channel 0
           midiNoteOn(chan, getNote(i), 127);
         } else  {
+          // is drum channel 0
           midiNoteOn(chan, getDrumNote(i), 127);
         }
       }
@@ -300,12 +305,14 @@ void stopColumn(int column) {
         }
       }
     }
+    // handle channel 2 differently, hold notes till the next note is played or all notes have been removed from the pattern.
     if(chan == 2 && stopPad(column)) {
       fullChannelOff(2);
     }
   }
 }
 
+// returns true if last pad notes should be stopped
 bool stopPad(uint8_t column) {
   uint8_t next;
   bool isEmpty = true;
@@ -337,29 +344,14 @@ void allPitchesOff(int chan, int note) {
   midiNoteOff(chan, getNoteWithPitch(note, 108), 127);
 }
 
-void stopAllNotes() {
-  for (uint8_t chan=0; chan<4; chan++) {
-    for (uint8_t i=0; i<NUM_COLUMNS; i++) {
-      for (uint8_t j=0; j<NUM_COLUMNS; j++) {
-        if(pattern[chan][chessboard[i][j]] && chan != 0) {
-          midiNoteOff(chan, getNote(i), 127);
-        } else if (pattern[chan][chessboard[i][j]]){
-          midiNoteOff(chan, getDrumNote(i), 127);
-        }
-      }
-    }
-  }
-}
-
 void fullChannelOff(int chan) {
   for (uint8_t note = 36; note < 121; note++) {
     midiNoteOff(chan, note, 127);
   }
 }
 
-
-
-void moveMarker(int toColumn) {
+// move the playhead to the specified column
+void movePlayhead(int toColumn) {
   int fromColumn;
 
   if(toColumn > 0) {
@@ -374,6 +366,7 @@ void moveMarker(int toColumn) {
   }
 }
 
+// update instrument settings changes
 void updateInstrument() {
   if(getInstrument() < 3) {
     midiSetChannelBank(0, VS1053_BANK_DRUMS1);
@@ -395,9 +388,9 @@ void runSeq(uint8_t channel) {
     } else {
       step = 0;
     }
-    // alternatively play and stop notes
+    // alternatively play and stop the previous column
     if(step % 2 == 0) {
-      moveMarker(step / 2);
+      movePlayhead(step / 2);
       playColumn(step / 2);
     } else {
       stopColumn((step - 1)/2);
@@ -412,6 +405,8 @@ void loop() {
   writeFrame();
   delay(10); // just to be on the safe side, you can experiment with lowering this
 }
+
+// functions to send midi signals
 
 void midiSetInstrument(uint8_t chan, uint8_t inst) {
   if (chan > 15) return;
