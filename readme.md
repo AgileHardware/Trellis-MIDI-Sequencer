@@ -1,8 +1,10 @@
-# Midi Magic
+# MIDI Magic
 
 Arduino sketch for an a 8 x 8 MIDI sequencer based on 4 Adafruit Trellis Keypads and the Adafruit Music Maker Shield / VLSI VS1053b.
 
-The project consists of 4 Trellis Keypads that form an 8x8 matrix for an 8 note, 8 step pattern, and 4 Potentiometers to control the various functions. [More information on the hardware setup can be found here (in german).](http://agile-hardware.de/blog/dummy)
+The project consists of 4 Trellis Keypads that form an 8x8 matrix for an 8 note, 8 step pattern, and 4 Potentiometers to control the various functions. [More information on the hardware setup can be found here (in german).](http://www.agile-hardware.de/midi-magic/)
+
+[Check out this video of the sequencer in action](https://vimeo.com/125694294)
 
 ## Channels
 
