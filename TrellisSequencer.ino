@@ -13,6 +13,11 @@
 #include <Wire.h>
 #include "Adafruit_Trellis.h"
 
+#include <OSCBundle.h>
+#include <OSCBoards.h>
+#include <OSCTiming.h>
+#include <SLIPEncodedUSBSerial.h>
+
 Adafruit_Trellis matrix0 = Adafruit_Trellis();
 Adafruit_Trellis matrix1 = Adafruit_Trellis();
 Adafruit_Trellis matrix2 = Adafruit_Trellis();
@@ -69,6 +74,8 @@ bool nextFrame[NUM_KEYS];
 long nextStepMillis = 0;
 // holds the current step in the sequencer
 uint8_t step = 0;
+
+SLIPEncodedUSBSerial SLIPSerial(Serial);
 
 
 // This function turns all LEDs off
@@ -235,11 +242,34 @@ void movePlayhead(uint8_t toColumn) {
   }
 }
 
+void sendOSCBundle() {
+  //declare the bundle
+  OSCBundle bndl;
+  osctime_t timetag;
+
+  //OSCBundle's add' returns the OSCMessage so the message's 'add' can be composed together
+  bndl.add("/analog/0").add((int32_t)adcRead(0, &timetag));
+  bndl.add("/analog/0/time").add(timetag);
+
+  bndl.add("/analog/1").add((int32_t)adcRead(1, &timetag));
+  bndl.add("/analog/1/time").add(timetag);
+
+  bndl.add("/digital/5").add((digitalRead(5)==HIGH)?"HIGH":"LOW");
+
+  SLIPSerial.beginPacket();
+  bndl.setTimetag(oscTime());
+      bndl.send(SLIPSerial); // send the bytes to the SLIP stream
+  SLIPSerial.endPacket(); // mark the end of the OSC Packet
+  bndl.empty(); // empty the bundle to free room for a new one
+}
+
 // arduino default functions
 
 void setup() {
   // uncomment the following for debugging, eg figuring out your chessboard assignment
   // Serial.begin(115200);
+
+  SLIPSerial.begin(9600);
 
   setupTrellis();
 
@@ -248,7 +278,8 @@ void setup() {
 }
 
 void loop() {
+  sendOSCBundle();
   checkButtons();
   writeFrame();
-  delay(10);
+  delay(1000);
 }
