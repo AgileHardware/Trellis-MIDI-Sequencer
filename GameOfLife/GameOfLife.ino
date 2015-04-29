@@ -23,11 +23,9 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 
 #define POTI_MODE       0
 #define POTI_DELAY      1
-#define POTI_PITCH_BASE  2
 
 #define MODE_SETUP_GAME 0
 #define MODE_RUN_GAME   1
-#define MODE_DRUM_SEQ   2
 
 // Connect the INT wire from Trellis to pin #5 or change this constant
 #define INTPIN          5
@@ -60,10 +58,6 @@ bool nextFrame[NUM_KEYS];
 // This variable holds the time in milliseconds since boot when the next step should be run
 long nextStepMillis = 0;
 
-// if running a sequencer type program, this variable holds the current step
-int step = 0;
-
-
 // This function turns all LEDs on the board off
 void clearBoard() {
   for (uint8_t i=0; i<NUM_KEYS; i++) {
@@ -82,7 +76,6 @@ void runBootCheck() {
       delay(10);
     }
   }
-
   clearBoard();
 }
 
