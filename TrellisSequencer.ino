@@ -97,6 +97,7 @@ bool nextFrame[NUM_KEYS];
 // This variable holds the time in milliseconds since boot when the next step should be run
 long nextStepMillis = 0;
 
+// all notes that are currently on
 bool currentlyPlaying[4][128];
 
 // current step in the sequencer
@@ -124,33 +125,10 @@ void runBootCheck() {
       midiNoteOff(0, i+60, 64);
     }
   }
-
   clearBoard();
 }
 
-void setup() {
-
-  // uncomment the following for debugging, eg figuring out your chessboard assignment
-  // Serial.begin(115200);
-
-  // 31250 is the baud rate for the classic serial midi protocol
-  // 115200 is the default for virtual serial midi devices on computers
-  // Serial1 is specific to the Arduino Leonardo, change according to your model
-  Serial1.begin(31250);
-
-  // INT pin requires a pullup
-  pinMode(INTPIN, INPUT);
-  digitalWrite(INTPIN, HIGH);
-
-  trellis.begin(0x72, 0x71, 0x70, 0x73);
-
-  pinMode(VS1053_RESET, OUTPUT);
-  pinMode(10, OUTPUT);
-  digitalWrite(VS1053_RESET, LOW);
-  delay(10);
-  digitalWrite(VS1053_RESET, HIGH);
-  delay(10);
-
+void setMidiDefaults() {
   midiSetChannelBank(0, VS1053_BANK_DRUMS1);
   midiSetChannelBank(1, VS1053_BANK_MELODY);
   midiSetChannelBank(2, VS1053_BANK_MELODY);
@@ -160,8 +138,28 @@ void setup() {
   midiSetChannelVolume(2, VOLUME * VOLUME_FACTOR_PAD);
   midiSetChannelVolume(3, VOLUME * VOLUME_FACTOR_LEAD);
   setSpeakersOn(!HEADPHONES_ONLY);
+}
+
+void setupTrellis() {
+  // INT pin requires a pullup
+  pinMode(INTPIN, INPUT);
+  digitalWrite(INTPIN, HIGH);
+
+  trellis.begin(0x72, 0x71, 0x70, 0x73);
+}
+
+void setupVS1053() {
+  // 31250 is the baud rate for the classic serial midi protocol
+  // 115200 is the default for virtual serial midi devices on computers
+  // Serial1 is specific to the Arduino Leonardo, change according to your model
+  Serial1.begin(31250);
+
+  pinMode(VS1053_RESET, OUTPUT);
+  pinMode(10, OUTPUT);
+  digitalWrite(VS1053_RESET, LOW);
   delay(10);
-  runBootCheck();
+  digitalWrite(VS1053_RESET, HIGH);
+  delay(10);
 }
 
 void toggleLED(int placeVal) {
@@ -360,7 +358,7 @@ void updateInstrument() {
   midiSetInstrument(3, lead[getInstrument()]);
 }
 
-void runSeq() {
+void playNoteStep() {
   if(isNextStep()) {
     step = (step + 1) % 16;
     // alternatively play and stop the previous column
@@ -371,13 +369,6 @@ void runSeq() {
       stopAll((step - 1) / 2);
     }
   }
-}
-
-void loop() {
-  updateInstrument();
-  runSeq();
-  checkButtons();
-  writeFrame();
 }
 
 // functions to send midi signals
@@ -440,8 +431,24 @@ void setSpeakersOn(bool on) {
   }
 }
 
-void midiChanOff(uint8_t chan) {
-  for(uint8_t i = 0; i < 128; i++) {
-    midiNoteOff(chan, i, 127);
-  }
+// arduino default functions
+
+void setup() {
+  // uncomment the following for debugging, eg figuring out your chessboard assignment
+  // Serial.begin(115200);
+
+  setupVS1053();
+  setupTrellis();
+
+  setMidiDefaults();
+
+  delay(10);
+  runBootCheck();
+}
+
+void loop() {
+  updateInstrument();
+  playNoteStep();
+  checkButtons();
+  writeFrame();
 }
