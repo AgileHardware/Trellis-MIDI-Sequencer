@@ -58,7 +58,7 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 #define VOLUME_FACTOR_PAD   9
 #define VOLUME_FACTOR_LEAD  10
 
-#define HEADPHONES_ONLY     false
+#define HEADPHONES_ONLY     true
 
 // Instruments see http://www.vlsi.fi/fileadmin/datasheets/vs1053.pdf Pg 32
 const uint8_t lead[8] = {10, 116, 29, 86,  20, 114, 7,   7};
@@ -96,6 +96,8 @@ bool nextFrame[NUM_KEYS];
 
 // This variable holds the time in milliseconds since boot when the next step should be run
 long nextStepMillis = 0;
+
+bool currentlyPlaying[4][128];
 
 // current step in the sequencer
 int step = 0;
@@ -233,31 +235,23 @@ void writeFrame() {
 }
 
 // The Note input for MIDI functions covers one octave from 0 = C to 7 = C
-int getNote(int note) {
-  switch (note) {
-    case 0: return getPitchBase() + 12;
-    case 1: return getPitchBase() + 11;
-    case 2: return getPitchBase() + 9;
-    case 3: return getPitchBase() + 7;
-    case 4: return getPitchBase() + 5;
-    case 5: return getPitchBase() + 4;
-    case 6: return getPitchBase() + 2;
-    case 7: return getPitchBase();
+int getNote(uint8_t note, uint8_t chan) {
+  if(chan == 0) {
+    return getDrumNote(note);
+  } else {
+    switch (note) {
+      case 0: return getPitchBase() + 12;
+      case 1: return getPitchBase() + 11;
+      case 2: return getPitchBase() + 9;
+      case 3: return getPitchBase() + 7;
+      case 4: return getPitchBase() + 5;
+      case 5: return getPitchBase() + 4;
+      case 6: return getPitchBase() + 2;
+      case 7: return getPitchBase();
+    }
   }
 }
 
-int getNoteWithPitch(int note, int pitch) {
-  switch (note) {
-    case 0: return pitch + 12;
-    case 1: return pitch + 11;
-    case 2: return pitch + 9;
-    case 3: return pitch + 7;
-    case 4: return pitch + 5;
-    case 5: return pitch + 4;
-    case 6: return pitch + 2;
-    case 7: return pitch;
-  }
-}
 
 // for the drum channel, different note values are appropriate because it is not melodic. It should also not be affected by pitch changes
 int getDrumNote(int note) {
@@ -291,33 +285,8 @@ void playColumn(int column) {
   for (uint8_t chan=0; chan<4; chan++) {
     for (uint8_t i=0; i<NUM_COLUMNS; i++) {
       if(pattern[chan][chessboard[i][column]]) {
-        if(chan != 0) {
-          // is not drum channel 0
-          midiNoteOn(chan, getNote(i), 127);
-        } else  {
-          // is drum channel 0
-          midiNoteOn(chan, getDrumNote(i), 127);
-        }
+        midiNoteOn(chan, getNote(i, chan), 127);
       }
-    }
-  }
-}
-
-
-void stopColumn(int column) {
-  for (uint8_t chan=0; chan<4; chan++) {
-    for (uint8_t i=0; i<8; i++) {
-      if(pattern[chan][chessboard[i][column]]) {
-        if (chan == 1 || chan == 3) {
-          allPitchesOff(chan, i);
-        } else if (chan == 0) {
-          midiNoteOff(chan, getDrumNote(i), 127);
-        }
-      }
-    }
-    // handle channel 2 differently, hold notes till the next note is played or all notes have been removed from the pattern.
-    if(chan == 2 && stopPad(column)) {
-      fullChannelOff(2);
     }
   }
 }
@@ -344,19 +313,20 @@ bool stopPad(uint8_t column) {
   return isEmpty;
 }
 
-void allPitchesOff(int chan, int note) {
-  midiNoteOff(chan, getNoteWithPitch(note, 36), 127);
-  midiNoteOff(chan, getNoteWithPitch(note, 48), 127);
-  midiNoteOff(chan, getNoteWithPitch(note, 60), 127);
-  midiNoteOff(chan, getNoteWithPitch(note, 72), 127);
-  midiNoteOff(chan, getNoteWithPitch(note, 84), 127);
-  midiNoteOff(chan, getNoteWithPitch(note, 96), 127);
-  midiNoteOff(chan, getNoteWithPitch(note, 108), 127);
+void stopChan(uint8_t chan) {
+  for (uint8_t note = 0; note < 128; note++) {
+    if(currentlyPlaying[chan][note]) {
+      midiNoteOff(chan, note, 127);
+    }
+  }
 }
 
-void fullChannelOff(int chan) {
-  for (uint8_t note = 36; note < 121; note++) {
-    midiNoteOff(chan, note, 127);
+void stopAll(uint8_t column) {
+  stopChan(0);
+  stopChan(1);
+  stopChan(3);
+  if(stopPad(column)) {
+    stopChan(2);
   }
 }
 
@@ -390,30 +360,24 @@ void updateInstrument() {
   midiSetInstrument(3, lead[getInstrument()]);
 }
 
-void runSeq(uint8_t channel) {
-  updateInstrument();
+void runSeq() {
   if(isNextStep()) {
-    if(step < 15) {
-      step++;
-    } else {
-      step = 0;
-    }
+    step = (step + 1) % 16;
     // alternatively play and stop the previous column
     if(step % 2 == 0) {
       movePlayhead(step / 2);
       playColumn(step / 2);
     } else {
-      stopColumn((step - 1)/2);
+      stopAll((step - 1) / 2);
     }
   }
-  checkButtons();
 }
 
 void loop() {
-  runSeq(getChannel());
-
+  updateInstrument();
+  runSeq();
+  checkButtons();
   writeFrame();
-  delay(10); // just to be on the safe side, you can experiment with lowering this
 }
 
 // functions to send midi signals
@@ -451,6 +415,7 @@ void midiNoteOn(uint8_t chan, uint8_t n, uint8_t vel) {
   if (n > 127) return;
   if (vel > 127) return;
 
+  currentlyPlaying[chan][n] = true;
   Serial1.write(MIDI_NOTE_ON | chan);
   Serial1.write(n);
   Serial1.write(vel);
@@ -461,6 +426,7 @@ void midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel) {
   if (n > 127) return;
   if (vel > 127) return;
 
+  currentlyPlaying[chan][n] = false;
   Serial1.write(MIDI_NOTE_OFF | chan);
   Serial1.write(n);
   Serial1.write(vel);
