@@ -77,7 +77,7 @@ Hint: you can figure out your arrangment by adding a serial print function to th
 
 */
 
-int chessboard[8][8] = {
+const uint8_t chessboard[8][8] = {
   {32, 33, 34, 35, 16, 17, 18, 19},
   {36, 37, 38, 39, 20, 21, 22, 23},
   {40, 41, 42, 43, 24, 25, 26, 27},
@@ -88,23 +88,21 @@ int chessboard[8][8] = {
   {12, 13, 14, 15, 60, 61, 62, 63}
 };
 
-// stores the patterns for all 4 channels
+// global variables
+
+// holds the patterns for all 4 channels
 bool pattern[4][NUM_KEYS];
-
-// stores the playhead
+// holds the playhead
 bool nextFrame[NUM_KEYS];
-
-// This variable holds the time in milliseconds since boot when the next step should be run
+// holds the time in milliseconds since boot when the next step should be run
 long nextStepMillis = 0;
-
-// all notes that are currently on
+// holds all notes that are currently on
 bool currentlyPlaying[4][128];
+// holds the current step in the sequencer
+uint8_t step = 0;
 
-// current step in the sequencer
-int step = 0;
 
-
-// This function turns all LEDs on the board off
+// This function turns all LEDs off
 void clearBoard() {
   for (uint8_t i=0; i<NUM_KEYS; i++) {
     trellis.clrLED(i);
@@ -162,7 +160,7 @@ void setupVS1053() {
   delay(10);
 }
 
-void toggleLED(int placeVal) {
+void toggleLED(uint8_t placeVal) {
  if (trellis.isLED(placeVal))
     trellis.clrLED(placeVal);
   else
@@ -171,7 +169,7 @@ void toggleLED(int placeVal) {
 
 // functions to get user settings from the potentionmeters
 
-int getChannel() {
+uint8_t getChannel() {
   int state = analogRead(POTI_MODE);
   if(state > 768) {
     return CHANNEL_LEAD;
@@ -233,7 +231,7 @@ void writeFrame() {
 }
 
 // The note input for MIDI functions covers one octave from 0 = C to 7 = C
-int getNote(uint8_t note, uint8_t chan) {
+uint8_t getNote(uint8_t note, uint8_t chan) {
   if(chan == 0) {
     return getDrumNote(note);
   } else {
@@ -252,7 +250,7 @@ int getNote(uint8_t note, uint8_t chan) {
 
 
 // for the drum channel, different note values are appropriate because it is not melodic. It should also not be affected by pitch changes
-int getDrumNote(int note) {
+uint8_t getDrumNote(uint8_t note) {
   if(getInstrument() == 3) {
     switch (note) {
       case 0: return 84;
@@ -279,7 +277,7 @@ int getDrumNote(int note) {
 }
 
 // play the notes for the specified column in the matrix
-void playColumn(int column) {
+void playColumn(uint8_t column) {
   for (uint8_t chan=0; chan<4; chan++) {
     for (uint8_t i=0; i<NUM_COLUMNS; i++) {
       if(pattern[chan][chessboard[i][column]]) {
@@ -329,8 +327,8 @@ void stopAll(uint8_t column) {
 }
 
 // move the playhead to the specified column
-void movePlayhead(int toColumn) {
-  int fromColumn;
+void movePlayhead(uint8_t toColumn) {
+  uint8_t fromColumn;
 
   if(toColumn > 0) {
     fromColumn = toColumn - 1;
@@ -338,9 +336,9 @@ void movePlayhead(int toColumn) {
     fromColumn = NUM_COLUMNS - 1;
   }
 
-  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
-    nextFrame[chessboard[i][fromColumn]] = 0;
-    nextFrame[chessboard[i][toColumn]] = 1;
+  for (uint8_t i=0; i<8; i++) {
+    nextFrame[chessboard[i][fromColumn]] = false;
+    nextFrame[chessboard[i][toColumn]] = true;
   }
 }
 
@@ -348,8 +346,7 @@ void movePlayhead(int toColumn) {
 void updateInstrument() {
   if(getInstrument() < 3) {
     midiSetChannelBank(0, VS1053_BANK_DRUMS1);
-  }
-  else {
+  } else {
     midiSetChannelBank(0, VS1053_BANK_MELODY);
   }
   midiSetInstrument(0, drum[getInstrument()]);
@@ -374,14 +371,13 @@ void playNoteStep() {
 // functions to send midi signals
 
 void midiSetInstrument(uint8_t chan, uint8_t inst) {
-  if (chan > 15) return;
+  if (chan > 15)  return;
   inst --; // page 32 has instruments starting with 1 not 0 :(
   if (inst > 127) return;
 
   Serial1.write(MIDI_CHAN_PROGRAM | chan);
   Serial1.write(inst);
 }
-
 
 void midiSetChannelVolume(uint8_t chan, uint8_t vol) {
   if (chan > 15) return;
@@ -393,7 +389,7 @@ void midiSetChannelVolume(uint8_t chan, uint8_t vol) {
 }
 
 void midiSetChannelBank(uint8_t chan, uint8_t bank) {
-  if (chan > 15) return;
+  if (chan > 15)  return;
   if (bank > 127) return;
 
   Serial1.write(MIDI_CHAN_MSG | chan);
@@ -403,7 +399,7 @@ void midiSetChannelBank(uint8_t chan, uint8_t bank) {
 
 void midiNoteOn(uint8_t chan, uint8_t n, uint8_t vel) {
   if (chan > 15) return;
-  if (n > 127) return;
+  if (n > 127)   return;
   if (vel > 127) return;
 
   currentlyPlaying[chan][n] = true;
@@ -414,7 +410,7 @@ void midiNoteOn(uint8_t chan, uint8_t n, uint8_t vel) {
 
 void midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel) {
   if (chan > 15) return;
-  if (n > 127) return;
+  if (n > 127)   return;
   if (vel > 127) return;
 
   currentlyPlaying[chan][n] = false;
