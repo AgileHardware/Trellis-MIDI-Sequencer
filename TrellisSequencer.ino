@@ -112,10 +112,10 @@ void clearBoard() {
   trellis.writeDisplay();
 }
 
-// Turn all LEDs on one by one, row by row.
-// play one octave of notes
-// If this looks strange, adjust the chessboard matrix.
 void runBootCheck() {
+  // Turn all LEDs on one by one, row by row.
+  // play one octave of notes
+  // If this looks strange, adjust the chessboard matrix.
   for (uint8_t i=0; i<8; i++) {
     for (uint8_t j=0; j<8; j++) {
       trellis.setLED(chessboard[i][j]);
@@ -232,7 +232,7 @@ void writeFrame() {
   trellis.writeDisplay();
 }
 
-// The Note input for MIDI functions covers one octave from 0 = C to 7 = C
+// The note input for MIDI functions covers one octave from 0 = C to 7 = C
 int getNote(uint8_t note, uint8_t chan) {
   if(chan == 0) {
     return getDrumNote(note);
