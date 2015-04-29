@@ -37,35 +37,6 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 // Connect the INT wire from Trellis to pin #5 or change this constant
 #define INTPIN          5
 
-#define VS1053_RESET    9 // This is the pin that connects to the RESET
-
-// Constants for midi signals accepted by the vs1053. See http://www.vlsi.fi/fileadmin/datasheets/vs1053.pdf Pg 31
-#define VS1053_BANK_DEFAULT 0x00
-#define VS1053_BANK_DRUMS1  0x78
-#define VS1053_BANK_DRUMS2  0x7F
-#define VS1053_BANK_MELODY  0x79
-#define MIDI_NOTE_ON        0x90
-#define MIDI_NOTE_OFF       0x80
-#define MIDI_CHAN_MSG       0xB0
-#define MIDI_CHAN_BANK      0x00
-#define MIDI_CHAN_VOLUME    0x07
-#define MIDI_CHAN_PROGRAM   0xC0
-
-// Volume from 0 (mute) to 10; Factors to balance instruments from 0 (off) to 12
-#define VOLUME              8
-#define VOLUME_FACTOR_DRUMS 11
-#define VOLUME_FACTOR_BASS  10
-#define VOLUME_FACTOR_PAD   9
-#define VOLUME_FACTOR_LEAD  10
-
-#define HEADPHONES_ONLY     false
-
-// Instruments see http://www.vlsi.fi/fileadmin/datasheets/vs1053.pdf Pg 32
-const uint8_t lead[8] = {10, 116, 29, 86,  20, 114, 7,   7};
-const uint8_t pad[8]  = {42, 114, 19, 53,  20, 77,  83,  83};
-const uint8_t bass[8] = {38, 118, 38, 54,  53, 121, 87,  87};
-const uint8_t drum[8] = {3,  4,   15, 116, 15, 120, 119, 119};
-
 /*
 This is the arrangment of Trellis matrices that this program is configured for.
 If your setup is different, you'll have to change the numbers in the chessboard array accordingly.
@@ -96,8 +67,6 @@ bool pattern[4][NUM_KEYS];
 bool nextFrame[NUM_KEYS];
 // holds the time in milliseconds since boot when the next step should be run
 long nextStepMillis = 0;
-// holds all notes that are currently on
-bool currentlyPlaying[4][128];
 // holds the current step in the sequencer
 uint8_t step = 0;
 
@@ -118,25 +87,12 @@ void runBootCheck() {
     for (uint8_t j=0; j<8; j++) {
       trellis.setLED(chessboard[i][j]);
       trellis.writeDisplay();
-      midiNoteOn(0, i+60, 64);
-      delay(30);
-      midiNoteOff(0, i+60, 64);
+      delay(5);
     }
   }
   clearBoard();
 }
 
-void setMidiDefaults() {
-  midiSetChannelBank(0, VS1053_BANK_DRUMS1);
-  midiSetChannelBank(1, VS1053_BANK_MELODY);
-  midiSetChannelBank(2, VS1053_BANK_MELODY);
-  midiSetChannelBank(3, VS1053_BANK_MELODY);
-  midiSetChannelVolume(0, VOLUME * VOLUME_FACTOR_DRUMS);
-  midiSetChannelVolume(1, VOLUME * VOLUME_FACTOR_BASS);
-  midiSetChannelVolume(2, VOLUME * VOLUME_FACTOR_PAD);
-  midiSetChannelVolume(3, VOLUME * VOLUME_FACTOR_LEAD);
-  setSpeakersOn(!HEADPHONES_ONLY);
-}
 
 void setupTrellis() {
   // INT pin requires a pullup
@@ -146,19 +102,6 @@ void setupTrellis() {
   trellis.begin(0x72, 0x71, 0x70, 0x73);
 }
 
-void setupVS1053() {
-  // 31250 is the baud rate for the classic serial midi protocol
-  // 115200 is the default for virtual serial midi devices on computers
-  // Serial1 is specific to the Arduino Leonardo, change according to your model
-  Serial1.begin(31250);
-
-  pinMode(VS1053_RESET, OUTPUT);
-  pinMode(10, OUTPUT);
-  digitalWrite(VS1053_RESET, LOW);
-  delay(10);
-  digitalWrite(VS1053_RESET, HIGH);
-  delay(10);
-}
 
 void toggleLED(uint8_t placeVal) {
  if (trellis.isLED(placeVal))
@@ -276,56 +219,6 @@ uint8_t getDrumNote(uint8_t note) {
   }
 }
 
-// play the notes for the specified column in the matrix
-void playColumn(uint8_t column) {
-  for (uint8_t chan=0; chan<4; chan++) {
-    for (uint8_t i=0; i<NUM_COLUMNS; i++) {
-      if(pattern[chan][chessboard[i][column]]) {
-        midiNoteOn(chan, getNote(i, chan), 127);
-      }
-    }
-  }
-}
-
-// returns true if last pad notes should be stopped
-bool stopPad(uint8_t column) {
-  uint8_t next;
-  bool isEmpty = true;
-  if(column < 7) {
-    next = column + 1;
-  } else {
-    next = 0;
-  }
-  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
-    for (uint8_t j=0; j<NUM_COLUMNS; j++) {
-      if(pattern[2][chessboard[i][j]]) {
-        isEmpty = false;
-        if(j == next) {
-          return true;
-        }
-      }
-    }
-  }
-  return isEmpty;
-}
-
-void stopChan(uint8_t chan) {
-  for (uint8_t note = 0; note < 128; note++) {
-    if(currentlyPlaying[chan][note]) {
-      midiNoteOff(chan, note, 127);
-    }
-  }
-}
-
-void stopAll(uint8_t column) {
-  stopChan(0);
-  stopChan(1);
-  stopChan(3);
-  if(stopPad(column)) {
-    stopChan(2);
-  }
-}
-
 // move the playhead to the specified column
 void movePlayhead(uint8_t toColumn) {
   uint8_t fromColumn;
@@ -342,109 +235,20 @@ void movePlayhead(uint8_t toColumn) {
   }
 }
 
-// update instrument settings changes
-void updateInstrument() {
-  if(getInstrument() < 3) {
-    midiSetChannelBank(0, VS1053_BANK_DRUMS1);
-  } else {
-    midiSetChannelBank(0, VS1053_BANK_MELODY);
-  }
-  midiSetInstrument(0, drum[getInstrument()]);
-  midiSetInstrument(1, bass[getInstrument()]);
-  midiSetInstrument(2, pad[getInstrument()]);
-  midiSetInstrument(3, lead[getInstrument()]);
-}
-
-void playNoteStep() {
-  if(isNextStep()) {
-    step = (step + 1) % 16;
-    // alternatively play and stop the previous column
-    if(step % 2 == 0) {
-      movePlayhead(step / 2);
-      playColumn(step / 2);
-    } else {
-      stopAll((step - 1) / 2);
-    }
-  }
-}
-
-// functions to send midi signals
-
-void midiSetInstrument(uint8_t chan, uint8_t inst) {
-  if (chan > 15)  return;
-  inst --; // page 32 has instruments starting with 1 not 0 :(
-  if (inst > 127) return;
-
-  Serial1.write(MIDI_CHAN_PROGRAM | chan);
-  Serial1.write(inst);
-}
-
-void midiSetChannelVolume(uint8_t chan, uint8_t vol) {
-  if (chan > 15) return;
-  if (vol > 127) return;
-
-  Serial1.write(MIDI_CHAN_MSG | chan);
-  Serial1.write(MIDI_CHAN_VOLUME);
-  Serial1.write(vol);
-}
-
-void midiSetChannelBank(uint8_t chan, uint8_t bank) {
-  if (chan > 15)  return;
-  if (bank > 127) return;
-
-  Serial1.write(MIDI_CHAN_MSG | chan);
-  Serial1.write((uint8_t)MIDI_CHAN_BANK);
-  Serial1.write(bank);
-}
-
-void midiNoteOn(uint8_t chan, uint8_t n, uint8_t vel) {
-  if (chan > 15) return;
-  if (n > 127)   return;
-  if (vel > 127) return;
-
-  currentlyPlaying[chan][n] = true;
-  Serial1.write(MIDI_NOTE_ON | chan);
-  Serial1.write(n);
-  Serial1.write(vel);
-}
-
-void midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel) {
-  if (chan > 15) return;
-  if (n > 127)   return;
-  if (vel > 127) return;
-
-  currentlyPlaying[chan][n] = false;
-  Serial1.write(MIDI_NOTE_OFF | chan);
-  Serial1.write(n);
-  Serial1.write(vel);
-}
-
-void setSpeakersOn(bool on) {
-  if(on) {
-    digitalWrite(10, HIGH);
-  } else {
-    digitalWrite(10, LOW);
-  }
-}
-
 // arduino default functions
 
 void setup() {
   // uncomment the following for debugging, eg figuring out your chessboard assignment
   // Serial.begin(115200);
 
-  setupVS1053();
   setupTrellis();
-
-  setMidiDefaults();
 
   delay(10);
   runBootCheck();
 }
 
 void loop() {
-  updateInstrument();
-  playNoteStep();
   checkButtons();
   writeFrame();
+  delay(10);
 }
