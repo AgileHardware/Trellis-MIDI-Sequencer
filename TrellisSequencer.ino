@@ -193,11 +193,7 @@ void liveOrDie(int placeVal) {
 
 int getMode() {
   int state = analogRead(POTI_MODE);
-  if(state > 768) {
-    return 3;
-  } else if(state > 512) {
-    return MODE_DRUM_SEQ;
-  } else if(state > 256) {
+  if(state > 512) {
     return MODE_RUN_GAME;
   } else {
     return MODE_SETUP_GAME;
@@ -206,9 +202,6 @@ int getMode() {
 
 int getDelay() {
   return (1024 - analogRead(POTI_DELAY));
-}
-int getPitchBase() {
-  return 12 * map(analogRead(POTI_PITCH_BASE), 0, 1023, 3, 8);
 }
 
 
@@ -265,86 +258,11 @@ void writeFrame() {
   trellis.writeDisplay();
 }
 
-// The Note input for MIDI functions covers one octave from 0 = C to 7 = C
-
-// Send a MIDI signal to start the specified note
-void startNote(int note) {
-  Serial.write(0x90);
-  switch (note) {
-    case 0: Serial.write(getPitchBase() + 12); break;
-    case 1: Serial.write(getPitchBase() + 11); break;
-    case 2: Serial.write(getPitchBase() + 9); break;
-    case 3: Serial.write(getPitchBase() + 7); break;
-    case 4: Serial.write(getPitchBase() + 5); break;
-    case 5: Serial.write(getPitchBase() + 4); break;
-    case 6: Serial.write(getPitchBase() + 2); break;
-    case 7: Serial.write(getPitchBase()); break;
-  }
-  Serial.write(127);
-}
-
-// send a midi signal to end the specified note
-void stopNote(int note) {
-  Serial.write(0x80);
-  Serial.write(note);
-  Serial.write(127);
-}
-
-// play the notes for the specified column in the matrix
-void playColumn(int column) {
-  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
-    if(buttonState[chessboard[i][column]]) {
-      startNote(i);
-    }
-  }
-}
-
-void stopAllNotes() {
-  for (uint8_t i=24; i<108; i++) {
-    stopNote(i);
-  }
-}
-
-
-void moveMarker(int toColumn) {
-  int fromColumn;
-
-  if(toColumn > 0) {
-    fromColumn = toColumn - 1;
-  } else {
-    fromColumn = NUM_COLUMNS - 1;
-  }
-
-  for (uint8_t i=0; i<NUM_COLUMNS; i++) {
-    nextFrame[chessboard[i][fromColumn]] = 0;
-    nextFrame[chessboard[i][toColumn]] = 1;
-  }
-}
-
-void runDrumSeq() {
-  if(isNextStep()) {
-    if(step < 15) {
-      step++;
-    } else {
-      step = 0;
-    }
-    // alternatively play and stop notes
-    if(step % 2 == 0) {
-      moveMarker(step / 2);
-      playColumn(step / 2);
-    }
-    else {
-      stopAllNotes();
-    }
-  }
-  checkButtons();
-}
 
 void loop() {
   switch (getMode()) {
     case MODE_SETUP_GAME:   setupGame();   break;
     case MODE_RUN_GAME:     runGame();     break;
-    case MODE_DRUM_SEQ:     runDrumSeq();  break;
   }
 
   writeFrame();
