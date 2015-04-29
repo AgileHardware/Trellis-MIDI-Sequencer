@@ -10,12 +10,12 @@ The project consists of 4 Trellis Keypads that form an 8x8 matrix for an 8 note,
 
 The Sequencer has 4 separate channels that play at the same time, some of them have specific behaviours:
 
-Channel 1 - Drums: Not effected by pitch changes. Does not use CDEFGAH Note scale, but specific notes defined in the playDrumNote function
-Channel 2 - Bass
-Channel 3 - Pads: The notes are not stopped immediately in the following step, but only when another note is encountered or all notes have been removed
-Channel 4 - Lead
+- Channel 1 - Drums: Not effected by pitch changes. Does not use CDEFGAH Note scale, but specific notes defined in the playDrumNote function
+- Channel 2 - Bass
+- Channel 3 - Pads: The notes are not stopped immediately in the following step, but only when another note is encountered or all notes have been removed
+- Channel 4 - Lead
 
-The Channel to be shown on the Matrix is selected with the first potentiometer.
+The channel to be shown on the matrix is selected with the first potentiometer.
 
 ## Speed
 
@@ -23,7 +23,7 @@ The second potentiometer sets the play speed via a delay. At its max setting the
 
 ## Pitch
 
-The third potentiometer sets the octave to use / the pitch. This does not affect the Drum channel. It goes from C2 (midi notes 36 - 48) to C6 (midi notes 108 - 120).
+The third potentiometer sets the octave to use / the pitch. This does not affect the drum channel. It goes from C2 (midi notes 36 - 48) to C6 (midi notes 108 - 120).
 
 ## Instruments
 
