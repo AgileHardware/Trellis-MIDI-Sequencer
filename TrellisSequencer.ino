@@ -58,7 +58,7 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 #define VOLUME_FACTOR_PAD   9
 #define VOLUME_FACTOR_LEAD  10
 
-#define HEADPHONES_ONLY     true
+#define HEADPHONES_ONLY     false
 
 // Instruments see http://www.vlsi.fi/fileadmin/datasheets/vs1053.pdf Pg 32
 const uint8_t lead[8] = {10, 116, 29, 86,  20, 114, 7,   7};
