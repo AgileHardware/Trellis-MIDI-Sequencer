@@ -39,3 +39,7 @@ Index |Name           | Drums             | Bass                  | Pad         
 5     |Glitchy        |120: Reverse Cymbal|121: Guitar Fret Noise |77: Blown Bottle   |114: Agogo
 6     |Electronic     |119: Synth Drum    |87: Fifths Lead        |83: Calliope Lead  |7: Harpsichord
 7     |Electronic     |119: Synth Drum    |87: Fifths Lead        |83: Calliope Lead  |7: Harpsichord
+
+## Alternative Modes
+
+There are two alternative Sketches for this hardware setup. The first one runs the Game of Life on the matrix display and can be found in the 'GameOfLife' folder. The second one, which can be found in the folder 'MIDIControll', sends MIDI notes to an external source and runs the sequencer based on an external MIDI clock signal. It requires a MIDI <> Serial bridge like [Hairless MIDI Serial](http://projectgus.github.io/hairless-midiserial/).
