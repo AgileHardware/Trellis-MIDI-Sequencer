@@ -44,6 +44,10 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 #define MIDI_CHAN_BANK      0x00
 #define MIDI_CHAN_VOLUME    0x07
 #define MIDI_CHAN_PROGRAM   0xC0
+#define MIDI_START          0xfa
+#define MIDI_STOP           0xfc
+#define MIDI_CLOCK          0xf8
+#define MIDI_CONTINUE       0xfb
 
 // Volume from 0 (mute) to 10; Factors to balance instruments from 0 (off) to 12
 #define VOLUME              8
@@ -81,8 +85,6 @@ const uint8_t chessboard[8][8] = {
 bool pattern[4][NUM_KEYS];
 // holds the playhead
 bool nextFrame[NUM_KEYS];
-// holds the time in milliseconds since boot when the next step should be run
-long nextStepMillis = 0;
 // holds all notes that are currently on
 bool currentlyPlaying[4][128];
 // holds the current step in the sequencer
@@ -157,15 +159,6 @@ int getInstrument() {
   return map(analogRead(POTI_INSTRUMENT), 0, 1023, 0, 7);
 }
 
-// check if enough time has passed to run the next step
-bool isNextStep() {
-  if(nextStepMillis < millis()) {
-    nextStepMillis = millis() + getDelay();
-    return true;
-  } else {
-    return false;
-  }
-}
 
 void checkButtons() {
   if (trellis.readSwitches()) {
@@ -309,14 +302,27 @@ void movePlayhead(uint8_t toColumn) {
 
 
 void playNoteStep() {
-  if(isNextStep()) {
-    step = (step + 1) % 16;
-    // alternatively play and stop the previous column
-    if(step % 2 == 0) {
-      movePlayhead(step / 2);
-      playColumn(step / 2);
+  step = (step + 1) % 16;
+  // alternatively play and stop the previous column
+  if(step % 2 == 0) {
+    movePlayhead(step / 2);
+    playColumn(step / 2);
+  } else {
+    stopAll((step - 1) / 2);
+  }
+}
+
+uint8_t pulse = 0;
+
+void handleMidiMessage(byte data) {
+  if(pulse == 0) {
+    playNoteStep();
+  }
+  if(data == MIDI_CLOCK) {
+    if(pulse < 6) {
+      pulse++;
     } else {
-      stopAll((step - 1) / 2);
+      pulse = 0;
     }
   }
 }
@@ -387,7 +393,10 @@ void setup() {
 }
 
 void loop() {
-  playNoteStep();
   checkButtons();
   writeFrame();
+  if(Serial.available() > 0) {
+    byte data = Serial.read();
+    handleMidiMessage(data);
+  }
 }
