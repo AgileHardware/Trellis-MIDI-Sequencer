@@ -12,6 +12,7 @@
 
 #include <Wire.h>
 #include "Adafruit_Trellis.h"
+#include <MIDI.h>
 
 Adafruit_Trellis matrix0 = Adafruit_Trellis();
 Adafruit_Trellis matrix1 = Adafruit_Trellis();
@@ -20,19 +21,13 @@ Adafruit_Trellis matrix3 = Adafruit_Trellis();
 
 Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2, &matrix3);
 
+MIDI_CREATE_INSTANCE(HardwareSerial, Serial, midiUSB);
+
 #define NUM_TRELLIS     4
 #define NUM_COLUMNS     8
 #define NUM_KEYS        (NUM_TRELLIS * 16)
 
-#define POTI_MODE       0
-#define POTI_DELAY      1
 #define POTI_PITCH_BASE 2
-#define POTI_INSTRUMENT 3
-
-#define CHANNEL_DRUM    0
-#define CHANNEL_BASS    1
-#define CHANNEL_PAD     2
-#define CHANNEL_LEAD    3
 
 // Connect the INT wire from Trellis to pin #5 or change this constant
 #define INTPIN          5
@@ -48,14 +43,6 @@ Adafruit_TrellisSet trellis =  Adafruit_TrellisSet(&matrix0, &matrix1, &matrix2,
 #define MIDI_STOP           0xfc
 #define MIDI_CLOCK          0xf8
 #define MIDI_CONTINUE       0xfb
-
-// Volume from 0 (mute) to 10; Factors to balance instruments from 0 (off) to 12
-#define VOLUME              8
-#define VOLUME_FACTOR_DRUMS 11
-#define VOLUME_FACTOR_BASS  10
-#define VOLUME_FACTOR_PAD   9
-#define VOLUME_FACTOR_LEAD  10
-
 
 /*
 This is the arrangment of Trellis matrices that this program is configured for.
@@ -82,11 +69,11 @@ const uint8_t chessboard[8][8] = {
 // global variables
 
 // holds the patterns for all 4 channels
-bool pattern[4][NUM_KEYS];
+bool pattern[NUM_KEYS];
 // holds the playhead
 bool nextFrame[NUM_KEYS];
 // holds all notes that are currently on
-bool currentlyPlaying[4][128];
+bool currentlyPlaying[128];
 // holds the current step in the sequencer
 uint8_t step = 0;
 
@@ -112,13 +99,6 @@ void runBootCheck() {
   clearBoard();
 }
 
-void setMidiDefaults() {
-  midiSetChannelVolume(0, VOLUME * VOLUME_FACTOR_DRUMS);
-  midiSetChannelVolume(1, VOLUME * VOLUME_FACTOR_BASS);
-  midiSetChannelVolume(2, VOLUME * VOLUME_FACTOR_PAD);
-  midiSetChannelVolume(3, VOLUME * VOLUME_FACTOR_LEAD);
-}
-
 void setupTrellis() {
   // INT pin requires a pullup
   pinMode(INTPIN, INPUT);
@@ -127,38 +107,11 @@ void setupTrellis() {
   trellis.begin(0x72, 0x71, 0x70, 0x73);
 }
 
-void toggleLED(uint8_t placeVal) {
- if (trellis.isLED(placeVal))
-    trellis.clrLED(placeVal);
-  else
-    trellis.setLED(placeVal);
-}
-
 // functions to get user settings from the potentionmeters
 
-uint8_t getChannel() {
-  int state = analogRead(POTI_MODE);
-  if(state > 768) {
-    return CHANNEL_LEAD;
-  } else if(state > 512) {
-    return CHANNEL_PAD;
-  } else if(state > 256) {
-    return CHANNEL_BASS;
-  } else {
-    return CHANNEL_DRUM;
-  }
-}
-
-int getDelay() {
-  return map((1024 - analogRead(POTI_DELAY)), 1024, 0, 512, 0);
-}
 int getPitchBase() {
   return 12 * map(analogRead(POTI_PITCH_BASE), 0, 1023, 3, 8);
 }
-int getInstrument() {
-  return map(analogRead(POTI_INSTRUMENT), 0, 1023, 0, 7);
-}
-
 
 void checkButtons() {
   if (trellis.readSwitches()) {
@@ -166,10 +119,7 @@ void checkButtons() {
     for (uint8_t i=0; i<NUM_KEYS; i++) {
       if (trellis.justPressed(i)) {
         // toggle the pressed position in the pattern
-        pattern[getChannel()][i] = !pattern[getChannel()][i];
-
-        // uncomment the following to figure out chessboard assignment
-        // Serial.writeln(i);
+        pattern[i] = !pattern[i];
       }
     }
   }
@@ -179,7 +129,7 @@ void checkButtons() {
 void writeFrame() {
   for (uint8_t i=0; i<NUM_KEYS; i++) {
     // this displays the sum of the pattern and nextFrame arrays
-    if(pattern[getChannel()][i] || nextFrame[i]) {
+    if(pattern[i] || nextFrame[i]) {
       trellis.setLED(i);
     } else {
       trellis.clrLED(i);
@@ -189,98 +139,34 @@ void writeFrame() {
 }
 
 // The note input for MIDI functions covers one octave from 0 = C to 7 = C
-uint8_t getNote(uint8_t note, uint8_t chan) {
-  if(chan == 0) {
-    return getDrumNote(note);
-  } else {
-    switch (note) {
-      case 0: return getPitchBase() + 12;
-      case 1: return getPitchBase() + 11;
-      case 2: return getPitchBase() + 9;
-      case 3: return getPitchBase() + 7;
-      case 4: return getPitchBase() + 5;
-      case 5: return getPitchBase() + 4;
-      case 6: return getPitchBase() + 2;
-      case 7: return getPitchBase();
-    }
-  }
-}
-
-
-// for the drum channel, different note values are appropriate because it is not melodic. It should also not be affected by pitch changes
-uint8_t getDrumNote(uint8_t note) {
-  if(getInstrument() == 3) {
-    switch (note) {
-      case 0: return 84;
-      case 1: return 80;
-      case 2: return 76;
-      case 3: return 72;
-      case 4: return 68;
-      case 5: return 64;
-      case 6: return 60;
-      case 7: return 56;
-    }
-  } else {
-    switch (note) {
-      case 0: return 60;
-      case 1: return 59;
-      case 2: return 57;
-      case 3: return 50;
-      case 4: return 48;
-      case 5: return 40;
-      case 6: return 36;
-      case 7: return 38;
-    }
+uint8_t getNote(uint8_t note) {
+  switch (note) {
+    case 0: return getPitchBase() + 12;
+    case 1: return getPitchBase() + 11;
+    case 2: return getPitchBase() + 9;
+    case 3: return getPitchBase() + 7;
+    case 4: return getPitchBase() + 5;
+    case 5: return getPitchBase() + 4;
+    case 6: return getPitchBase() + 2;
+    case 7: return getPitchBase();
   }
 }
 
 // play the notes for the specified column in the matrix
 void playColumn(uint8_t column) {
-  for (uint8_t chan=0; chan<4; chan++) {
-    for (uint8_t i=0; i<NUM_COLUMNS; i++) {
-      if(pattern[chan][chessboard[i][column]]) {
-        midiNoteOn(chan, getNote(i, chan), 127);
-      }
-    }
-  }
-}
-
-// returns true if last pad notes should be stopped
-bool stopPad(uint8_t column) {
-  uint8_t next;
-  bool isEmpty = true;
-  if(column < 7) {
-    next = column + 1;
-  } else {
-    next = 0;
-  }
   for (uint8_t i=0; i<NUM_COLUMNS; i++) {
-    for (uint8_t j=0; j<NUM_COLUMNS; j++) {
-      if(pattern[2][chessboard[i][j]]) {
-        isEmpty = false;
-        if(j == next) {
-          return true;
-        }
-      }
+    if(pattern[chessboard[i][column]]) {
+      midiUSB.sendNoteOn(getNote(i), 127, 1);
+      currentlyPlaying[getNote(i)] = true;
     }
   }
-  return isEmpty;
 }
 
-void stopChan(uint8_t chan) {
+void stopNotes() {
   for (uint8_t note = 0; note < 128; note++) {
-    if(currentlyPlaying[chan][note]) {
-      midiNoteOff(chan, note, 127);
+    if(currentlyPlaying[note]) {
+      midiUSB.sendNoteOff(note, 127, 1);
     }
-  }
-}
-
-void stopAll(uint8_t column) {
-  stopChan(0);
-  stopChan(1);
-  stopChan(3);
-  if(stopPad(column)) {
-    stopChan(2);
   }
 }
 
@@ -308,85 +194,26 @@ void playNoteStep() {
     movePlayhead(step / 2);
     playColumn(step / 2);
   } else {
-    stopAll((step - 1) / 2);
+    stopNotes();
   }
 }
 
 uint8_t pulse = 0;
 
-void handleMidiMessage(byte data) {
+void handleClock() {
   if(pulse == 0) {
     playNoteStep();
   }
-  if(data == MIDI_CLOCK) {
-    if(pulse < 6) {
-      pulse++;
-    } else {
-      pulse = 0;
-    }
-  }
+  pulse = (pulse + 1) % 3;
 }
-
-// functions to send midi signals
-
-void midiSetInstrument(uint8_t chan, uint8_t inst) {
-  if (chan > 15)  return;
-  inst --; // page 32 has instruments starting with 1 not 0 :(
-  if (inst > 127) return;
-
-  Serial.write(MIDI_CHAN_PROGRAM | chan);
-  Serial.write(inst);
-}
-
-void midiSetChannelVolume(uint8_t chan, uint8_t vol) {
-  if (chan > 15) return;
-  if (vol > 127) return;
-
-  Serial.write(MIDI_CHAN_MSG | chan);
-  Serial.write(MIDI_CHAN_VOLUME);
-  Serial.write(vol);
-}
-
-void midiSetChannelBank(uint8_t chan, uint8_t bank) {
-  if (chan > 15)  return;
-  if (bank > 127) return;
-
-  Serial.write(MIDI_CHAN_MSG | chan);
-  Serial.write((uint8_t)MIDI_CHAN_BANK);
-  Serial.write(bank);
-}
-
-void midiNoteOn(uint8_t chan, uint8_t n, uint8_t vel) {
-  if (chan > 15) return;
-  if (n > 127)   return;
-  if (vel > 127) return;
-
-  currentlyPlaying[chan][n] = true;
-  Serial.write(MIDI_NOTE_ON | chan);
-  Serial.write(n);
-  Serial.write(vel);
-}
-
-void midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel) {
-  if (chan > 15) return;
-  if (n > 127)   return;
-  if (vel > 127) return;
-
-  currentlyPlaying[chan][n] = false;
-  Serial.write(MIDI_NOTE_OFF | chan);
-  Serial.write(n);
-  Serial.write(vel);
-}
-
 
 // arduino default functions
 
 void setup() {
-  Serial.begin(115200);
-
+  midiUSB.begin(MIDI_CHANNEL_OMNI);
+  midiUSB.turnThruOff();
+  midiUSB.setHandleClock(handleClock);
   setupTrellis();
-
-  setMidiDefaults();
 
   delay(10);
   runBootCheck();
@@ -395,8 +222,6 @@ void setup() {
 void loop() {
   checkButtons();
   writeFrame();
-  if(Serial.available() > 0) {
-    byte data = Serial.read();
-    handleMidiMessage(data);
-  }
+  midiUSB.read();
+  writeFrame();
 }
